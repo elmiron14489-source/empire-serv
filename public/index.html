@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Empire Conquest</title>
+<style>
+  :root{
+    --bg:#12140f; --panel:#1b1e15; --panel2:#22261a; --line:#4a4326;
+    --gold:#c9a15a; --gold-dim:#8a7040; --ink:#e9e3d0; --ink-dim:#9a9781; --danger:#a1453a;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0;background:radial-gradient(ellipse at 50% -10%, #1c2016 0%, var(--bg) 60%);color:var(--ink);font-family:'Trebuchet MS','Segoe UI',sans-serif;}
+  h1,h2,h3{font-family:Georgia,'Iowan Old Style',serif;margin:0;}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 18px 60px;}
+  header.top{display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:20px;}
+  header.top h1{font-size:26px;letter-spacing:3px;text-transform:uppercase;color:var(--gold);font-weight:600;}
+  header.top .sub{color:var(--ink-dim);font-size:12px;letter-spacing:2px;text-transform:uppercase;}
+  .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:6px;padding:20px;}
+  .btn{background:linear-gradient(180deg,#d8b56c,var(--gold));color:#20200f;border:none;padding:10px 20px;border-radius:4px;font-weight:700;letter-spacing:1px;text-transform:uppercase;font-size:12px;cursor:pointer;}
+  .btn:hover{box-shadow:0 0 0 2px var(--gold-dim);}
+  .btn:disabled{opacity:.35;cursor:not-allowed;box-shadow:none;}
+  .btn.ghost{background:transparent;color:var(--gold);border:1px solid var(--gold-dim);}
+  input[type=text]{background:#0f110b;border:1px solid var(--line);color:var(--ink);padding:9px 12px;border-radius:4px;font-size:14px;width:100%;}
+  label{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-dim);display:block;margin-bottom:6px;}
+  .field{margin-bottom:16px;}
+  .swatches{display:flex;gap:8px;flex-wrap:wrap;}
+  .swatch{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;}
+  .swatch.sel{border-color:var(--ink);}
+  .center-screen{display:flex;justify-content:center;padding-top:40px;}
+  .landing-card{max-width:420px;width:100%;}
+  .tab-btns{display:flex;gap:8px;margin-bottom:18px;}
+  .tab-btns .btn.ghost.active{background:var(--gold-dim);color:#20200f;}
+  .lobby-players{list-style:none;padding:0;margin:0 0 18px;}
+  .lobby-players li{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);}
+  .dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;}
+  .code-box{font-family:monospace;font-size:22px;letter-spacing:6px;text-align:center;background:#0f110b;border:1px dashed var(--gold-dim);padding:10px;border-radius:4px;color:var(--gold);}
+  .game-layout{display:grid;grid-template-columns:230px 1fr 260px;gap:16px;}
+  @media(max-width:920px){.game-layout{grid-template-columns:1fr;}}
+  .players-panel li{display:flex;align-items:center;gap:8px;padding:8px 6px;border-radius:4px;margin-bottom:4px;font-size:13px;}
+  .players-panel li.turn{background:rgba(201,161,90,.15);box-shadow:inset 0 0 0 1px var(--gold-dim);}
+  .players-panel .meta{margin-left:auto;text-align:right;font-size:11px;color:var(--ink-dim);}
+  .board-wrap{overflow:auto;background:#0d0f09;border:1px solid var(--line);border-radius:6px;padding:10px;}
+  .hex-label{font-size:14px;font-weight:700;fill:#fff;text-anchor:middle;pointer-events:none;text-shadow:0 1px 2px #000;}
+  .hex-poly{stroke:#0d0f09;stroke-width:2px;cursor:pointer;}
+  .hex-poly.selectable:hover{filter:brightness(1.25);}
+  .hex-poly.sel-from{stroke:#fff;stroke-width:3px;}
+  .hex-poly.sel-target{stroke:var(--gold);stroke-width:3px;stroke-dasharray:4 3;}
+  .action-panel h3{font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:var(--gold);margin-bottom:10px;}
+  .phase-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;text-transform:uppercase;letter-spacing:1px;background:var(--gold-dim);color:#20200f;font-weight:700;margin-bottom:10px;}
+  .log{background:#0f110b;border:1px solid var(--line);border-radius:4px;padding:10px;height:190px;overflow-y:auto;font-size:12px;color:var(--ink-dim);line-height:1.6;}
+  .log div{border-bottom:1px solid rgba(255,255,255,.04);padding:3px 0;}
+  .hint{font-size:12px;color:var(--ink-dim);margin-top:6px;}
+  .winner-banner{text-align:center;padding:40px 20px;border:1px solid var(--gold-dim);border-radius:8px;margin-bottom:20px;background:radial-gradient(ellipse at 50% 0%, rgba(201,161,90,.15), transparent);}
+  .winner-banner h2{font-size:32px;color:var(--gold);letter-spacing:2px;}
+  .dice-count-btns{display:flex;gap:6px;margin:8px 0;}
+  .dice-count-btns button{width:34px;height:34px;border-radius:4px;border:1px solid var(--gold-dim);background:transparent;color:var(--ink);cursor:pointer;font-weight:700;}
+  .dice-count-btns button.active{background:var(--gold);color:#20200f;}
+  .dice-count-btns button:disabled{opacity:.3;cursor:not-allowed;}
+  .small-muted{font-size:11px;color:var(--ink-dim);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Empire Conquest</h1>
+    <div class="sub" id="headerSub">пошаговый захват мира</div>
+  </header>
+  <div id="app"></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+const COLS = 6, ROWS = 5, HEX_SIZE = 40;
+const PLAYER_COLORS = [
+  {name:'Золотой', hex:'#c9a15a'}, {name:'Багровый', hex:'#a1453a'},
+  {name:'Стальной', hex:'#4a7ba8'}, {name:'Изумрудный', hex:'#4a9463'},
+  {name:'Пурпурный', hex:'#8a63a8'}, {name:'Янтарный', hex:'#c97a34'},
+];
+
+function getPlayerId(){
+  let id = localStorage.getItem('ec-player-id');
+  if(!id){ id = 'p_'+Math.random().toString(36).slice(2,12); localStorage.setItem('ec-player-id', id); }
+  return id;
+}
+
+let uiState = {
+  screen:'landing', roomCode:null, myId:getPlayerId(), myName:localStorage.getItem('ec-name')||'',
+  myColor:PLAYER_COLORS[0].hex, game:null, selectedFrom:null, selectedTo:null,
+  attackDice:1, fortifyAmount:1, errorMsg:''
+};
+
+function territoryId(c,r){ return c+'_'+r; }
+function neighborsOf(col,row){
+  const even=[[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[0,1]];
+  const odd=[[1,1],[1,0],[0,-1],[-1,0],[-1,1],[0,1]];
+  const deltas=(col%2===0)?even:odd; const out=[];
+  for(const [dc,dr] of deltas){ const c=col+dc,r=row+dr; if(c>=0&&c<COLS&&r>=0&&r<ROWS) out.push(territoryId(c,r)); }
+  return out;
+}
+function continentOf(c){ return c<2?'A':c<4?'B':'C'; }
+const ADJ={}; for(let c=0;c<COLS;c++) for(let r=0;r<ROWS;r++) ADJ[territoryId(c,r)]=neighborsOf(c,r);
+function hexPoints(cx,cy,size){ const pts=[]; for(let i=0;i<6;i++){ const a=Math.PI/180*(60*i); pts.push([cx+size*Math.cos(a),cy+size*Math.sin(a)]); } return pts.map(p=>p.join(',')).join(' '); }
+function hexCenter(col,row){ const x=HEX_SIZE*1.5*col+HEX_SIZE+10; const y=HEX_SIZE*Math.sqrt(3)*(row+0.5*(col%2))+HEX_SIZE+10; return [x,y]; }
+function playerById(state,id){ return state.players.find(p=>p.id===id); }
+function isMyTurn(state){ return state && state.phase==='playing' && state.turnOrder[state.currentTurnIndex]===uiState.myId; }
+function ownedTerritories(state,id){ return Object.entries(state.territories).filter(([,v])=>v.owner===id).map(([k])=>k); }
+function phaseLabel(p){ return p==='reinforce'?'Подкрепление':p==='attack'?'Атака':p==='fortify'?'Переброска':''; }
+
+// ---------- SOCKET EVENTS ----------
+socket.on('joined', ({roomCode})=>{ uiState.roomCode=roomCode; uiState.screen='lobby'; render(); });
+socket.on('error-msg', (msg)=>{ uiState.errorMsg=msg; render(); });
+socket.on('state', (state)=>{
+  uiState.game=state;
+  if(state.phase==='playing' && uiState.screen==='lobby') uiState.screen='game';
+  render();
+});
+
+function createRoom(name,color){
+  localStorage.setItem('ec-name', name);
+  uiState.myName=name; uiState.myColor=color;
+  socket.emit('create-room', { name, color, playerId: uiState.myId });
+}
+function joinRoom(code,name,color){
+  localStorage.setItem('ec-name', name);
+  uiState.myName=name; uiState.myColor=color;
+  socket.emit('join-room', { code, name, color, playerId: uiState.myId });
+}
+function startGame(){ socket.emit('start-game', { roomCode: uiState.roomCode }); }
+function placeReinforcement(tid){ socket.emit('place-reinforcement', { roomCode: uiState.roomCode, tid }); }
+function doAttack(){
+  socket.emit('attack', { roomCode: uiState.roomCode, from: uiState.selectedFrom, to: uiState.selectedTo, diceCount: uiState.attackDice });
+  uiState.selectedFrom=null; uiState.selectedTo=null; uiState.attackDice=1;
+}
+function goToFortify(){ socket.emit('go-to-fortify', { roomCode: uiState.roomCode }); uiState.selectedFrom=null; uiState.selectedTo=null; }
+function doFortify(){
+  socket.emit('fortify', { roomCode: uiState.roomCode, from: uiState.selectedFrom, to: uiState.selectedTo, amount: uiState.fortifyAmount });
+  uiState.selectedFrom=null; uiState.selectedTo=null;
+}
+function endTurn(){ socket.emit('end-turn', { roomCode: uiState.roomCode }); uiState.selectedFrom=null; uiState.selectedTo=null; }
+
+// ---------- RENDER HELPERS ----------
+function el(tag,attrs={},children=[]){
+  const e=document.createElement(tag);
+  for(const [k,v] of Object.entries(attrs)){
+    if(k==='class') e.className=v;
+    else if(k.startsWith('on') && typeof v==='function') e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k,v);
+  }
+  (Array.isArray(children)?children:[children]).forEach(c=>{ if(c==null) return; e.appendChild(typeof c==='string'?document.createTextNode(c):c); });
+  return e;
+}
+
+function renderLanding(){
+  const app=document.getElementById('app'); app.innerHTML='';
+  const prefillRoom = window.__prefillRoom || '';
+  let mode = prefillRoom ? 'join' : 'create', name=uiState.myName||'', color=uiState.myColor, code=prefillRoom;
+  const container=el('div',{class:'center-screen'});
+  const card=el('div',{class:'card landing-card'});
+  const tabs=el('div',{class:'tab-btns'});
+  const btnCreate=el('button',{class:'btn ghost'+(mode==='create'?' active':'')},'Создать комнату');
+  const btnJoin=el('button',{class:'btn ghost'+(mode==='join'?' active':'')},'Войти по коду');
+  tabs.appendChild(btnCreate); tabs.appendChild(btnJoin);
+  const formZone=el('div',{});
+  function drawForm(){
+    formZone.innerHTML='';
+    formZone.appendChild(el('div',{class:'field'},[el('label',{},'Ваше имя'), el('input',{type:'text',value:name,oninput:e=>name=e.target.value,placeholder:'Например, Марк Аврелий'})]));
+    const colorField=el('div',{class:'field'},[el('label',{},'Ваш цвет')]);
+    const sw=el('div',{class:'swatches'});
+    PLAYER_COLORS.forEach(c=>{ sw.appendChild(el('div',{class:'swatch'+(color===c.hex?' sel':''),style:`background:${c.hex}`,title:c.name,onclick:()=>{color=c.hex;drawForm();}})); });
+    colorField.appendChild(sw); formZone.appendChild(colorField);
+    if(mode==='join'){
+      formZone.appendChild(el('div',{class:'field'},[el('label',{},'Код комнаты'), el('input',{type:'text',value:code,oninput:e=>code=e.target.value,placeholder:'ABCDE',style:'text-transform:uppercase;letter-spacing:3px;'})]));
+    }
+    if(uiState.errorMsg) formZone.appendChild(el('div',{style:'color:#c97a6a;font-size:12px;margin-bottom:10px;'}, uiState.errorMsg));
+    formZone.appendChild(el('button',{class:'btn',style:'width:100%;',onclick:()=>{
+      uiState.errorMsg='';
+      if(!name.trim()){ uiState.errorMsg='Введите имя.'; drawForm(); return; }
+      if(mode==='create') createRoom(name.trim(),color);
+      else{ if(!code.trim()){ uiState.errorMsg='Введите код комнаты.'; drawForm(); return; } joinRoom(code,name.trim(),color); }
+    }}, mode==='create'?'Создать и пригласить друзей':'Присоединиться'));
+  }
+  btnCreate.onclick=()=>{ mode='create'; btnCreate.classList.add('active'); btnJoin.classList.remove('active'); drawForm(); };
+  btnJoin.onclick=()=>{ mode='join'; btnJoin.classList.add('active'); btnCreate.classList.remove('active'); drawForm(); };
+  card.appendChild(el('h2',{style:'margin-bottom:16px;'},'Начать кампанию'));
+  card.appendChild(tabs); card.appendChild(formZone); drawForm();
+  container.appendChild(card); app.appendChild(container);
+}
+
+function renderLobby(){
+  const app=document.getElementById('app'); const state=uiState.game; app.innerHTML='';
+  const container=el('div',{class:'center-screen'});
+  const card=el('div',{class:'card',style:'max-width:480px;width:100%;'});
+  card.appendChild(el('h2',{style:'margin-bottom:6px;'},'Комната ожидания'));
+  card.appendChild(el('p',{class:'small-muted',style:'margin-bottom:14px;'},'Отправьте ссылку или код друзьям:'));
+  card.appendChild(el('div',{class:'code-box'}, uiState.roomCode));
+  const link = location.origin + '/?room=' + uiState.roomCode;
+  const copyBtn=el('button',{class:'btn ghost',style:'margin-top:10px;width:100%;',onclick:()=>{
+    try{ navigator.clipboard.writeText(link); copyBtn.textContent='Ссылка скопирована ✓'; setTimeout(()=>copyBtn.textContent='Скопировать ссылку-приглашение',1200); }catch(e){}
+  }},'Скопировать ссылку-приглашение');
+  card.appendChild(copyBtn);
+  const list=el('ul',{class:'lobby-players',style:'margin-top:20px;'});
+  state.players.forEach(p=>{ list.appendChild(el('li',{},[el('div',{class:'dot',style:`background:${p.color}`}), el('div',{}, p.name+(p.host?' (хозяин)':''))])); });
+  card.appendChild(list);
+  const me=playerById(state,uiState.myId);
+  if(me && me.host){
+    card.appendChild(el('button',{class:'btn',style:'width:100%;',disabled:state.players.length<2,onclick:startGame}, state.players.length<2?'Нужно ≥2 игроков':'Начать войну'));
+  } else card.appendChild(el('p',{class:'small-muted'},'Ожидание хозяина комнаты...'));
+  container.appendChild(card); app.appendChild(container);
+}
+
+function renderGame(){
+  const app=document.getElementById('app'); const state=uiState.game; app.innerHTML='';
+  if(state.phase==='ended'){
+    const w=playerById(state,state.winner);
+    app.appendChild(el('div',{class:'winner-banner'},[el('h2',{},`👑 ${w.name} завоевал(а) мир!`), el('p',{class:'small-muted'},'Игра окончена.')]));
+  }
+  const layout=el('div',{class:'game-layout'});
+  const left=el('div',{class:'card'});
+  left.appendChild(el('h3',{style:'font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:var(--gold);margin-bottom:10px;'},'Игроки'));
+  const pl=el('ul',{style:'list-style:none;padding:0;margin:0;'});
+  state.players.forEach(p=>{
+    const owns=ownedTerritories(state,p.id).length;
+    const armies=Object.values(state.territories).filter(t=>t.owner===p.id).reduce((a,t)=>a+t.armies,0);
+    const active=state.phase==='playing' && state.turnOrder[state.currentTurnIndex]===p.id;
+    const eliminated=state.phase==='playing' && !state.turnOrder.includes(p.id);
+    pl.appendChild(el('li',{class:'players-panel'+(active?' turn':'')},[
+      el('div',{class:'dot',style:`background:${p.color};opacity:${eliminated?0.3:1}`}),
+      el('div',{style:eliminated?'text-decoration:line-through;opacity:.5;':''}, p.name),
+      el('div',{class:'meta'}, eliminated?'выбыл':`${owns} тер. / ${armies} арм.`)
+    ]));
+  });
+  left.appendChild(pl);
+  left.appendChild(el('div',{class:'small-muted',style:'margin-top:14px;'}, `Код комнаты: ${uiState.roomCode}`));
+  layout.appendChild(left);
+
+  const center=el('div',{class:'board-wrap'});
+  const width=HEX_SIZE*1.5*COLS+HEX_SIZE*2, height=HEX_SIZE*Math.sqrt(3)*(ROWS+1)+HEX_SIZE*2;
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox',`0 0 ${width} ${height}`); svg.setAttribute('width',Math.min(width,760)); svg.setAttribute('height',Math.min(height,650));
+  const myTurn=isMyTurn(state);
+  for(let c=0;c<COLS;c++) for(let r=0;r<ROWS;r++){
+    const tid=territoryId(c,r); const t=state.territories[tid]; const [cx,cy]=hexCenter(c,r);
+    const poly=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    poly.setAttribute('points', hexPoints(cx,cy,HEX_SIZE-2));
+    let fill = t ? playerById(state,t.owner).color : (continentOf(c)==='A'?'#3f6b46':continentOf(c)==='B'?'#3a5c78':'#8f4f34');
+    poly.setAttribute('fill', fill);
+    let cls='hex-poly', selectable=false;
+    if(myTurn && t){
+      if(state.turnPhase==='reinforce' && t.owner===uiState.myId && state.reinforcements>0) selectable=true;
+      if(state.turnPhase==='attack'){
+        if(uiState.selectedFrom===null && t.owner===uiState.myId && t.armies>1) selectable=true;
+        else if(uiState.selectedFrom!==null){
+          if(tid===uiState.selectedFrom) selectable=true;
+          else if(ADJ[uiState.selectedFrom].includes(tid)) selectable=true;
+        }
+      }
+      if(state.turnPhase==='fortify' && !state.fortifyUsed){
+        if(uiState.selectedFrom===null && t.owner===uiState.myId && t.armies>1) selectable=true;
+        else if(uiState.selectedFrom!==null && (tid===uiState.selectedFrom || (t.owner===uiState.myId && ADJ[uiState.selectedFrom].includes(tid)))) selectable=true;
+      }
+    }
+    if(selectable) cls+=' selectable';
+    if(tid===uiState.selectedFrom) cls+=' sel-from';
+    if(tid===uiState.selectedTo) cls+=' sel-target';
+    poly.setAttribute('class',cls);
+    poly.addEventListener('click', ()=>onHexClick(tid));
+    svg.appendChild(poly);
+    if(t){
+      const label=document.createElementNS('http://www.w3.org/2000/svg','text');
+      label.setAttribute('x',cx); label.setAttribute('y',cy+5); label.setAttribute('class','hex-label'); label.textContent=t.armies;
+      svg.appendChild(label);
+    }
+  }
+  center.appendChild(svg); layout.appendChild(center);
+
+  const right=el('div',{});
+  const actionCard=el('div',{class:'card action-panel',style:'margin-bottom:14px;'});
+  if(state.phase==='playing'){
+    const curP=playerById(state,state.turnOrder[state.currentTurnIndex]);
+    actionCard.appendChild(el('div',{class:'phase-pill'}, phaseLabel(state.turnPhase)));
+    actionCard.appendChild(el('h3',{style:'margin-bottom:10px;'}, myTurn?'Ваш ход':`Ход: ${curP.name}`));
+    if(myTurn){
+      if(state.turnPhase==='reinforce'){
+        actionCard.appendChild(el('p',{class:'small-muted'}, `Осталось разместить: ${state.reinforcements}`));
+        actionCard.appendChild(el('p',{class:'hint'},'Кликните по своей территории на карте, чтобы поставить войско.'));
+      } else if(state.turnPhase==='attack'){
+        actionCard.appendChild(el('p',{class:'hint'},'Выберите свою территорию, затем вражескую соседнюю — для атаки.'));
+        if(uiState.selectedFrom && uiState.selectedTo && state.territories[uiState.selectedTo].owner!==uiState.myId){
+          const fromArmies=state.territories[uiState.selectedFrom].armies;
+          const maxDice=Math.min(3, fromArmies-1);
+          const diceRow=el('div',{class:'dice-count-btns'});
+          for(let d=1; d<=3; d++) diceRow.appendChild(el('button',{disabled:d>maxDice, class:uiState.attackDice===d?'active':'', onclick:()=>{uiState.attackDice=d; render();}}, String(d)));
+          actionCard.appendChild(el('label',{},'Кубиков атаки'));
+          actionCard.appendChild(diceRow);
+          actionCard.appendChild(el('button',{class:'btn',style:'width:100%;margin-top:6px;',onclick:doAttack}, `Атаковать [${uiState.selectedTo}]`));
+        }
+        actionCard.appendChild(el('button',{class:'btn ghost',style:'width:100%;margin-top:10px;',onclick:goToFortify},'Перейти к переброске войск'));
+      } else if(state.turnPhase==='fortify'){
+        actionCard.appendChild(el('p',{class:'hint'}, state.fortifyUsed?'Переброска уже выполнена в этот ход.':'Выберите свою территорию и соседнюю свою — для переброски войск (один раз за ход).'));
+        if(!state.fortifyUsed && uiState.selectedFrom && uiState.selectedTo){
+          const maxAmt=state.territories[uiState.selectedFrom].armies-1;
+          actionCard.appendChild(el('label',{},`Количество (макс. ${maxAmt})`));
+          const amtRow=el('div',{class:'dice-count-btns'});
+          for(let d=1; d<=Math.min(maxAmt,6); d++) amtRow.appendChild(el('button',{class:uiState.fortifyAmount===d?'active':'', onclick:()=>{uiState.fortifyAmount=d; render();}}, String(d)));
+          actionCard.appendChild(amtRow);
+          actionCard.appendChild(el('button',{class:'btn',style:'width:100%;margin-top:6px;',onclick:doFortify},'Перебросить'));
+        }
+        actionCard.appendChild(el('button',{class:'btn',style:'width:100%;margin-top:10px;',onclick:endTurn},'Завершить ход'));
+      }
+    } else actionCard.appendChild(el('p',{class:'hint'},'Ожидание хода соперника...'));
+  } else if(state.phase==='ended') actionCard.appendChild(el('p',{},'Кампания завершена.'));
+  right.appendChild(actionCard);
+
+  const logCard=el('div',{class:'card'});
+  logCard.appendChild(el('h3',{},'Журнал событий'));
+  const logDiv=el('div',{class:'log'});
+  (state.log||[]).forEach(l=>logDiv.appendChild(el('div',{},l)));
+  logCard.appendChild(logDiv);
+  right.appendChild(logCard);
+  layout.appendChild(right); app.appendChild(layout);
+}
+
+function onHexClick(tid){
+  const state=uiState.game;
+  if(!isMyTurn(state)) return;
+  const t=state.territories[tid];
+  if(state.turnPhase==='reinforce'){
+    if(t.owner===uiState.myId && state.reinforcements>0) placeReinforcement(tid);
+    return;
+  }
+  if(state.turnPhase==='attack'){
+    if(uiState.selectedFrom===null){ if(t.owner===uiState.myId && t.armies>1){ uiState.selectedFrom=tid; render(); } }
+    else if(tid===uiState.selectedFrom){ uiState.selectedFrom=null; uiState.selectedTo=null; render(); }
+    else if(ADJ[uiState.selectedFrom].includes(tid)){
+      if(t.owner===uiState.myId){ uiState.selectedFrom=tid; uiState.selectedTo=null; render(); }
+      else { uiState.selectedTo=tid; uiState.attackDice=1; render(); }
+    }
+    return;
+  }
+  if(state.turnPhase==='fortify' && !state.fortifyUsed){
+    if(uiState.selectedFrom===null){ if(t.owner===uiState.myId && t.armies>1){ uiState.selectedFrom=tid; render(); } }
+    else if(tid===uiState.selectedFrom){ uiState.selectedFrom=null; uiState.selectedTo=null; render(); }
+    else if(t.owner===uiState.myId && ADJ[uiState.selectedFrom].includes(tid)){ uiState.selectedTo=tid; uiState.fortifyAmount=1; render(); }
+  }
+}
+
+function render(){
+  document.getElementById('headerSub').textContent = uiState.screen==='landing' ? 'пошаговый захват мира' : 'комната: '+uiState.roomCode;
+  if(uiState.screen==='landing') renderLanding();
+  else if(uiState.screen==='lobby'){ if(uiState.game && uiState.game.phase==='playing'){ uiState.screen='game'; renderGame(); } else renderLobby(); }
+  else if(uiState.screen==='game') renderGame();
+}
+
+// if opened via invite link ?room=CODE, pre-fill the join form with that code
+(function initFromLink(){
+  const params = new URLSearchParams(location.search);
+  const room = params.get('room');
+  if(room) window.__prefillRoom = room.toUpperCase();
+})();
+
+render();
+</script>
+</body>
+</html>

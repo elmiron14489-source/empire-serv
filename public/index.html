@@ -1,368 +1,782 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Empire Conquest</title>
-<style>
-  :root{
-    --bg:#12140f; --panel:#1b1e15; --panel2:#22261a; --line:#4a4326;
-    --gold:#c9a15a; --gold-dim:#8a7040; --ink:#e9e3d0; --ink-dim:#9a9781; --danger:#a1453a;
-  }
-  *{box-sizing:border-box;}
-  html,body{height:100%;}
-  body{margin:0;background:radial-gradient(ellipse at 50% -10%, #1c2016 0%, var(--bg) 60%);color:var(--ink);font-family:'Trebuchet MS','Segoe UI',sans-serif;}
-  h1,h2,h3{font-family:Georgia,'Iowan Old Style',serif;margin:0;}
-  .wrap{max-width:1180px;margin:0 auto;padding:22px 18px 60px;}
-  header.top{display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:20px;}
-  header.top h1{font-size:26px;letter-spacing:3px;text-transform:uppercase;color:var(--gold);font-weight:600;}
-  header.top .sub{color:var(--ink-dim);font-size:12px;letter-spacing:2px;text-transform:uppercase;}
-  .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:6px;padding:20px;}
-  .btn{background:linear-gradient(180deg,#d8b56c,var(--gold));color:#20200f;border:none;padding:10px 20px;border-radius:4px;font-weight:700;letter-spacing:1px;text-transform:uppercase;font-size:12px;cursor:pointer;}
-  .btn:hover{box-shadow:0 0 0 2px var(--gold-dim);}
-  .btn:disabled{opacity:.35;cursor:not-allowed;box-shadow:none;}
-  .btn.ghost{background:transparent;color:var(--gold);border:1px solid var(--gold-dim);}
-  input[type=text]{background:#0f110b;border:1px solid var(--line);color:var(--ink);padding:9px 12px;border-radius:4px;font-size:14px;width:100%;}
-  label{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-dim);display:block;margin-bottom:6px;}
-  .field{margin-bottom:16px;}
-  .swatches{display:flex;gap:8px;flex-wrap:wrap;}
-  .swatch{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;}
-  .swatch.sel{border-color:var(--ink);}
-  .center-screen{display:flex;justify-content:center;padding-top:40px;}
-  .landing-card{max-width:420px;width:100%;}
-  .tab-btns{display:flex;gap:8px;margin-bottom:18px;}
-  .tab-btns .btn.ghost.active{background:var(--gold-dim);color:#20200f;}
-  .lobby-players{list-style:none;padding:0;margin:0 0 18px;}
-  .lobby-players li{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);}
-  .dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;}
-  .code-box{font-family:monospace;font-size:22px;letter-spacing:6px;text-align:center;background:#0f110b;border:1px dashed var(--gold-dim);padding:10px;border-radius:4px;color:var(--gold);}
-  .game-layout{display:grid;grid-template-columns:230px 1fr 260px;gap:16px;}
-  @media(max-width:920px){.game-layout{grid-template-columns:1fr;}}
-  .players-panel li{display:flex;align-items:center;gap:8px;padding:8px 6px;border-radius:4px;margin-bottom:4px;font-size:13px;}
-  .players-panel li.turn{background:rgba(201,161,90,.15);box-shadow:inset 0 0 0 1px var(--gold-dim);}
-  .players-panel .meta{margin-left:auto;text-align:right;font-size:11px;color:var(--ink-dim);}
-  .board-wrap{overflow:auto;background:#0d0f09;border:1px solid var(--line);border-radius:6px;padding:10px;}
-  .hex-label{font-size:14px;font-weight:700;fill:#fff;text-anchor:middle;pointer-events:none;text-shadow:0 1px 2px #000;}
-  .hex-poly{stroke:#0d0f09;stroke-width:2px;cursor:pointer;}
-  .hex-poly.selectable:hover{filter:brightness(1.25);}
-  .hex-poly.sel-from{stroke:#fff;stroke-width:3px;}
-  .hex-poly.sel-target{stroke:var(--gold);stroke-width:3px;stroke-dasharray:4 3;}
-  .action-panel h3{font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:var(--gold);margin-bottom:10px;}
-  .phase-pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;text-transform:uppercase;letter-spacing:1px;background:var(--gold-dim);color:#20200f;font-weight:700;margin-bottom:10px;}
-  .log{background:#0f110b;border:1px solid var(--line);border-radius:4px;padding:10px;height:190px;overflow-y:auto;font-size:12px;color:var(--ink-dim);line-height:1.6;}
-  .log div{border-bottom:1px solid rgba(255,255,255,.04);padding:3px 0;}
-  .hint{font-size:12px;color:var(--ink-dim);margin-top:6px;}
-  .winner-banner{text-align:center;padding:40px 20px;border:1px solid var(--gold-dim);border-radius:8px;margin-bottom:20px;background:radial-gradient(ellipse at 50% 0%, rgba(201,161,90,.15), transparent);}
-  .winner-banner h2{font-size:32px;color:var(--gold);letter-spacing:2px;}
-  .dice-count-btns{display:flex;gap:6px;margin:8px 0;}
-  .dice-count-btns button{width:34px;height:34px;border-radius:4px;border:1px solid var(--gold-dim);background:transparent;color:var(--ink);cursor:pointer;font-weight:700;}
-  .dice-count-btns button.active{background:var(--gold);color:#20200f;}
-  .dice-count-btns button:disabled{opacity:.3;cursor:not-allowed;}
-  .small-muted{font-size:11px;color:var(--ink-dim);}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Empire XP — Web версия</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            background: #1a2a3a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+        }
+        .game-container {
+            background: #2c3e50;
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            background: #1e2f3f;
+            border-radius: 12px;
+            cursor: pointer;
+            display: block;
+            margin-bottom: 15px;
+            box-shadow: inset 0 0 10px #0f1a24;
+        }
+        .info-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            color: #ecf0f1;
+            font-size: 16px;
+            padding: 10px 5px;
+            background: #1a2a3a;
+            border-radius: 10px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .info-panel div {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .player-tag {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        .btn {
+            background: #3498db;
+            border: none;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 30px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 14px;
+        }
+        .btn:hover {
+            background: #2980b9;
+            transform: scale(1.02);
+        }
+        .btn:disabled {
+            background: #7f8c8d;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .status {
+            background: #2c3e50;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 500;
+            min-width: 200px;
+            text-align: center;
+        }
+        .army-badge {
+            background: #e67e22;
+            padding: 2px 10px;
+            border-radius: 30px;
+            color: white;
+            font-weight: bold;
+        }
+        @media (max-width: 600px) {
+            .info-panel { flex-direction: column; align-items: stretch; }
+            .status { min-width: unset; }
+        }
+    </style>
 </head>
 <body>
-<div class="wrap">
-  <header class="top">
-    <h1>Empire Conquest</h1>
-    <div class="sub" id="headerSub">пошаговый захват мира</div>
-  </header>
-  <div id="app"></div>
+<div class="game-container">
+    <canvas id="mapCanvas" width="800" height="500"></canvas>
+    <div class="info-panel">
+        <div>
+            <span class="player-tag" id="currentPlayerTag" style="background:#e74c3c;">Игрок 1</span>
+            <span class="army-badge" id="armyCount">💂 0</span>
+        </div>
+        <div class="status" id="statusMessage">Нажмите на регион</div>
+        <div>
+            <button class="btn" id="endTurnBtn">⏭ Завершить ход</button>
+            <button class="btn" id="resetBtn" style="background:#e67e22;">🔄 Новая игра</button>
+        </div>
+    </div>
 </div>
-
-<script src="/socket.io/socket.io.js"></script>
 <script>
-const socket = io();
-const COLS = 6, ROWS = 5, HEX_SIZE = 40;
-const PLAYER_COLORS = [
-  {name:'Золотой', hex:'#c9a15a'}, {name:'Багровый', hex:'#a1453a'},
-  {name:'Стальной', hex:'#4a7ba8'}, {name:'Изумрудный', hex:'#4a9463'},
-  {name:'Пурпурный', hex:'#8a63a8'}, {name:'Янтарный', hex:'#c97a34'},
-];
+    // ============================================================
+    //  ДАННЫЕ КАРТЫ (8 регионов с координатами и соседями)
+    // ============================================================
+    const territoriesData = [
+        { id: 0, name: 'Аляска', x: 120, y: 100, neighbors: [1, 3] },
+        { id: 1, name: 'Северная Америка', x: 250, y: 140, neighbors: [0, 2, 3] },
+        { id: 2, name: 'Гренландия', x: 380, y: 80, neighbors: [1, 4] },
+        { id: 3, name: 'Южная Америка', x: 280, y: 260, neighbors: [0, 1, 5] },
+        { id: 4, name: 'Европа', x: 460, y: 160, neighbors: [2, 5, 6] },
+        { id: 5, name: 'Африка', x: 460, y: 280, neighbors: [3, 4, 6, 7] },
+        { id: 6, name: 'Азия', x: 600, y: 160, neighbors: [4, 5, 7] },
+        { id: 7, name: 'Австралия', x: 650, y: 340, neighbors: [5, 6] }
+    ];
 
-function getPlayerId(){
-  let id = localStorage.getItem('ec-player-id');
-  if(!id){ id = 'p_'+Math.random().toString(36).slice(2,12); localStorage.setItem('ec-player-id', id); }
-  return id;
-}
+    // ============================================================
+    //  СОСТОЯНИЕ ИГРЫ
+    // ============================================================
+    const canvas = document.getElementById('mapCanvas');
+    const ctx = canvas.getContext('2d');
 
-let uiState = {
-  screen:'landing', roomCode:null, myId:getPlayerId(), myName:localStorage.getItem('ec-name')||'',
-  myColor:PLAYER_COLORS[0].hex, game:null, selectedFrom:null, selectedTo:null,
-  attackDice:1, fortifyAmount:1, errorMsg:''
-};
+    let game = {};
 
-function territoryId(c,r){ return c+'_'+r; }
-function neighborsOf(col,row){
-  const even=[[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[0,1]];
-  const odd=[[1,1],[1,0],[0,-1],[-1,0],[-1,1],[0,1]];
-  const deltas=(col%2===0)?even:odd; const out=[];
-  for(const [dc,dr] of deltas){ const c=col+dc,r=row+dr; if(c>=0&&c<COLS&&r>=0&&r<ROWS) out.push(territoryId(c,r)); }
-  return out;
-}
-function continentOf(c){ return c<2?'A':c<4?'B':'C'; }
-const ADJ={}; for(let c=0;c<COLS;c++) for(let r=0;r<ROWS;r++) ADJ[territoryId(c,r)]=neighborsOf(c,r);
-function hexPoints(cx,cy,size){ const pts=[]; for(let i=0;i<6;i++){ const a=Math.PI/180*(60*i); pts.push([cx+size*Math.cos(a),cy+size*Math.sin(a)]); } return pts.map(p=>p.join(',')).join(' '); }
-function hexCenter(col,row){ const x=HEX_SIZE*1.5*col+HEX_SIZE+10; const y=HEX_SIZE*Math.sqrt(3)*(row+0.5*(col%2))+HEX_SIZE+10; return [x,y]; }
-function playerById(state,id){ return state.players.find(p=>p.id===id); }
-function isMyTurn(state){ return state && state.phase==='playing' && state.turnOrder[state.currentTurnIndex]===uiState.myId; }
-function ownedTerritories(state,id){ return Object.entries(state.territories).filter(([,v])=>v.owner===id).map(([k])=>k); }
-function phaseLabel(p){ return p==='reinforce'?'Подкрепление':p==='attack'?'Атака':p==='fortify'?'Переброска':''; }
-
-// ---------- SOCKET EVENTS ----------
-socket.on('joined', ({roomCode})=>{ uiState.roomCode=roomCode; uiState.screen='lobby'; render(); });
-socket.on('error-msg', (msg)=>{ uiState.errorMsg=msg; render(); });
-socket.on('state', (state)=>{
-  uiState.game=state;
-  if(state.phase==='playing' && uiState.screen==='lobby') uiState.screen='game';
-  render();
-});
-
-function createRoom(name,color){
-  localStorage.setItem('ec-name', name);
-  uiState.myName=name; uiState.myColor=color;
-  socket.emit('create-room', { name, color, playerId: uiState.myId });
-}
-function joinRoom(code,name,color){
-  localStorage.setItem('ec-name', name);
-  uiState.myName=name; uiState.myColor=color;
-  socket.emit('join-room', { code, name, color, playerId: uiState.myId });
-}
-function startGame(){ socket.emit('start-game', { roomCode: uiState.roomCode }); }
-function placeReinforcement(tid){ socket.emit('place-reinforcement', { roomCode: uiState.roomCode, tid }); }
-function doAttack(){
-  socket.emit('attack', { roomCode: uiState.roomCode, from: uiState.selectedFrom, to: uiState.selectedTo, diceCount: uiState.attackDice });
-  uiState.selectedFrom=null; uiState.selectedTo=null; uiState.attackDice=1;
-}
-function goToFortify(){ socket.emit('go-to-fortify', { roomCode: uiState.roomCode }); uiState.selectedFrom=null; uiState.selectedTo=null; }
-function doFortify(){
-  socket.emit('fortify', { roomCode: uiState.roomCode, from: uiState.selectedFrom, to: uiState.selectedTo, amount: uiState.fortifyAmount });
-  uiState.selectedFrom=null; uiState.selectedTo=null;
-}
-function endTurn(){ socket.emit('end-turn', { roomCode: uiState.roomCode }); uiState.selectedFrom=null; uiState.selectedTo=null; }
-
-// ---------- RENDER HELPERS ----------
-function el(tag,attrs={},children=[]){
-  const e=document.createElement(tag);
-  for(const [k,v] of Object.entries(attrs)){
-    if(k==='class') e.className=v;
-    else if(k.startsWith('on') && typeof v==='function') e.addEventListener(k.slice(2), v);
-    else if(typeof v==='boolean'){ if(v) e.setAttribute(k,''); }
-    else e.setAttribute(k,v);
-  }
-  (Array.isArray(children)?children:[children]).forEach(c=>{ if(c==null) return; e.appendChild(typeof c==='string'?document.createTextNode(c):c); });
-  return e;
-}
-
-function renderLanding(){
-  const app=document.getElementById('app'); app.innerHTML='';
-  const prefillRoom = window.__prefillRoom || '';
-  let mode = prefillRoom ? 'join' : 'create', name=uiState.myName||'', color=uiState.myColor, code=prefillRoom;
-  const container=el('div',{class:'center-screen'});
-  const card=el('div',{class:'card landing-card'});
-  const tabs=el('div',{class:'tab-btns'});
-  const btnCreate=el('button',{class:'btn ghost'+(mode==='create'?' active':'')},'Создать комнату');
-  const btnJoin=el('button',{class:'btn ghost'+(mode==='join'?' active':'')},'Войти по коду');
-  tabs.appendChild(btnCreate); tabs.appendChild(btnJoin);
-  const formZone=el('div',{});
-  function drawForm(){
-    formZone.innerHTML='';
-    formZone.appendChild(el('div',{class:'field'},[el('label',{},'Ваше имя'), el('input',{type:'text',value:name,oninput:e=>name=e.target.value,placeholder:'Например, Марк Аврелий'})]));
-    const colorField=el('div',{class:'field'},[el('label',{},'Ваш цвет')]);
-    const sw=el('div',{class:'swatches'});
-    PLAYER_COLORS.forEach(c=>{ sw.appendChild(el('div',{class:'swatch'+(color===c.hex?' sel':''),style:`background:${c.hex}`,title:c.name,onclick:()=>{color=c.hex;drawForm();}})); });
-    colorField.appendChild(sw); formZone.appendChild(colorField);
-    if(mode==='join'){
-      formZone.appendChild(el('div',{class:'field'},[el('label',{},'Код комнаты'), el('input',{type:'text',value:code,oninput:e=>code=e.target.value,placeholder:'ABCDE',style:'text-transform:uppercase;letter-spacing:3px;'})]));
+    function initGame() {
+        game = {
+            players: [
+                { id: 0, name: 'Игрок 1', color: '#e74c3c', territories: [], armiesTotal: 0 },
+                { id: 1, name: 'Компьютер', color: '#2ecc71', territories: [], armiesTotal: 0 }
+            ],
+            territories: territoriesData.map(t => ({
+                ...t,
+                ownerId: null,
+                armies: 0
+            })),
+            currentPlayer: 0,
+            phase: 'place_initial',   // 'place_initial', 'reinforce', 'attack', 'move'
+            selectedFrom: null,       // id территории (источник атаки или перемещения)
+            selectedTo: null,
+            turnNumber: 0,
+            initialPlacementDone: false,
+            // для ИИ
+            aiTimeout: null,
+            gameOver: false
+        };
+        // Начальная расстановка: каждый игрок получает по 20 войск
+        game.players.forEach(p => p.armiesTotal = 20);
+        // Все территории свободны
+        game.territories.forEach(t => { t.ownerId = null; t.armies = 0; });
+        game.currentPlayer = 0;
+        game.phase = 'place_initial';
+        game.initialPlacementDone = false;
+        game.gameOver = false;
+        if (game.aiTimeout) clearTimeout(game.aiTimeout);
+        updateUI();
+        drawMap();
+        setStatus('Начальная расстановка: кликните по свободной территории, чтобы поставить 1 войско');
     }
-    if(uiState.errorMsg) formZone.appendChild(el('div',{style:'color:#c97a6a;font-size:12px;margin-bottom:10px;'}, uiState.errorMsg));
-    formZone.appendChild(el('button',{class:'btn',style:'width:100%;',onclick:()=>{
-      uiState.errorMsg='';
-      if(!name.trim()){ uiState.errorMsg='Введите имя.'; drawForm(); return; }
-      if(mode==='create') createRoom(name.trim(),color);
-      else{ if(!code.trim()){ uiState.errorMsg='Введите код комнаты.'; drawForm(); return; } joinRoom(code,name.trim(),color); }
-    }}, mode==='create'?'Создать и пригласить друзей':'Присоединиться'));
-  }
-  btnCreate.onclick=()=>{ mode='create'; btnCreate.classList.add('active'); btnJoin.classList.remove('active'); drawForm(); };
-  btnJoin.onclick=()=>{ mode='join'; btnJoin.classList.add('active'); btnCreate.classList.remove('active'); drawForm(); };
-  card.appendChild(el('h2',{style:'margin-bottom:16px;'},'Начать кампанию'));
-  card.appendChild(tabs); card.appendChild(formZone); drawForm();
-  container.appendChild(card); app.appendChild(container);
-}
 
-function renderLobby(){
-  const app=document.getElementById('app'); const state=uiState.game; app.innerHTML='';
-  const container=el('div',{class:'center-screen'});
-  const card=el('div',{class:'card',style:'max-width:480px;width:100%;'});
-  card.appendChild(el('h2',{style:'margin-bottom:6px;'},'Комната ожидания'));
-  card.appendChild(el('p',{class:'small-muted',style:'margin-bottom:14px;'},'Отправьте ссылку или код друзьям:'));
-  card.appendChild(el('div',{class:'code-box'}, uiState.roomCode));
-  const link = location.origin + '/?room=' + uiState.roomCode;
-  const copyBtn=el('button',{class:'btn ghost',style:'margin-top:10px;width:100%;',onclick:()=>{
-    try{ navigator.clipboard.writeText(link); copyBtn.textContent='Ссылка скопирована ✓'; setTimeout(()=>copyBtn.textContent='Скопировать ссылку-приглашение',1200); }catch(e){}
-  }},'Скопировать ссылку-приглашение');
-  card.appendChild(copyBtn);
-  const list=el('ul',{class:'lobby-players',style:'margin-top:20px;'});
-  state.players.forEach(p=>{ list.appendChild(el('li',{},[el('div',{class:'dot',style:`background:${p.color}`}), el('div',{}, p.name+(p.host?' (хозяин)':''))])); });
-  card.appendChild(list);
-  const me=playerById(state,uiState.myId);
-  if(me && me.host){
-    card.appendChild(el('button',{class:'btn',style:'width:100%;',disabled:state.players.length<2,onclick:startGame}, state.players.length<2?'Нужно ≥2 игроков':'Начать войну'));
-  } else card.appendChild(el('p',{class:'small-muted'},'Ожидание хозяина комнаты...'));
-  container.appendChild(card); app.appendChild(container);
-}
+    // ============================================================
+    //  ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+    // ============================================================
+    function getTerritory(id) { return game.territories.find(t => t.id === id); }
 
-function renderGame(){
-  const app=document.getElementById('app'); const state=uiState.game; app.innerHTML='';
-  if(state.phase==='ended'){
-    const w=playerById(state,state.winner);
-    app.appendChild(el('div',{class:'winner-banner'},[el('h2',{},`👑 ${w.name} завоевал(а) мир!`), el('p',{class:'small-muted'},'Игра окончена.')]));
-  }
-  const layout=el('div',{class:'game-layout'});
-  const left=el('div',{class:'card'});
-  left.appendChild(el('h3',{style:'font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:var(--gold);margin-bottom:10px;'},'Игроки'));
-  const pl=el('ul',{style:'list-style:none;padding:0;margin:0;'});
-  state.players.forEach(p=>{
-    const owns=ownedTerritories(state,p.id).length;
-    const armies=Object.values(state.territories).filter(t=>t.owner===p.id).reduce((a,t)=>a+t.armies,0);
-    const active=state.phase==='playing' && state.turnOrder[state.currentTurnIndex]===p.id;
-    const eliminated=state.phase==='playing' && !state.turnOrder.includes(p.id);
-    pl.appendChild(el('li',{class:'players-panel'+(active?' turn':'')},[
-      el('div',{class:'dot',style:`background:${p.color};opacity:${eliminated?0.3:1}`}),
-      el('div',{style:eliminated?'text-decoration:line-through;opacity:.5;':''}, p.name),
-      el('div',{class:'meta'}, eliminated?'выбыл':`${owns} тер. / ${armies} арм.`)
-    ]));
-  });
-  left.appendChild(pl);
-  left.appendChild(el('div',{class:'small-muted',style:'margin-top:14px;'}, `Код комнаты: ${uiState.roomCode}`));
-  layout.appendChild(left);
+    function getPlayer(id) { return game.players.find(p => p.id === id); }
 
-  const center=el('div',{class:'board-wrap'});
-  const width=HEX_SIZE*1.5*COLS+HEX_SIZE*2, height=HEX_SIZE*Math.sqrt(3)*(ROWS+1)+HEX_SIZE*2;
-  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
-  svg.setAttribute('viewBox',`0 0 ${width} ${height}`); svg.setAttribute('width',Math.min(width,760)); svg.setAttribute('height',Math.min(height,650));
-  const myTurn=isMyTurn(state);
-  for(let c=0;c<COLS;c++) for(let r=0;r<ROWS;r++){
-    const tid=territoryId(c,r); const t=state.territories[tid]; const [cx,cy]=hexCenter(c,r);
-    const poly=document.createElementNS('http://www.w3.org/2000/svg','polygon');
-    poly.setAttribute('points', hexPoints(cx,cy,HEX_SIZE-2));
-    let fill = t ? playerById(state,t.owner).color : (continentOf(c)==='A'?'#3f6b46':continentOf(c)==='B'?'#3a5c78':'#8f4f34');
-    poly.setAttribute('fill', fill);
-    let cls='hex-poly', selectable=false;
-    if(myTurn && t){
-      if(state.turnPhase==='reinforce' && t.owner===uiState.myId && state.reinforcements>0) selectable=true;
-      if(state.turnPhase==='attack'){
-        if(uiState.selectedFrom===null && t.owner===uiState.myId && t.armies>1) selectable=true;
-        else if(uiState.selectedFrom!==null){
-          if(tid===uiState.selectedFrom) selectable=true;
-          else if(ADJ[uiState.selectedFrom].includes(tid)) selectable=true;
+    function getPlayerTerritories(playerId) {
+        return game.territories.filter(t => t.ownerId === playerId);
+    }
+
+    function getEnemyTerritories(playerId) {
+        return game.territories.filter(t => t.ownerId !== null && t.ownerId !== playerId);
+    }
+
+    function getNeighborTerritories(terrId) {
+        const t = getTerritory(terrId);
+        return t.neighbors.map(id => getTerritory(id)).filter(Boolean);
+    }
+
+    function getControlledNeighbors(terrId, playerId) {
+        return getNeighborTerritories(terrId).filter(n => n.ownerId === playerId);
+    }
+
+    function getEnemyNeighbors(terrId, playerId) {
+        return getNeighborTerritories(terrId).filter(n => n.ownerId !== null && n.ownerId !== playerId);
+    }
+
+    function countTerritories(playerId) {
+        return getPlayerTerritories(playerId).length;
+    }
+
+    // ============================================================
+    //  ЛОГИКА ИГРЫ
+    // ============================================================
+
+    // Подкрепление (в начале хода)
+    function calculateReinforcements(playerId) {
+        const count = countTerritories(playerId);
+        // Минимум 3, плюс количество территорий / 3 (округляем вниз)
+        let bonus = Math.max(3, Math.floor(count / 3));
+        // Бонус за контроль целых континентов (упрощённо — нет)
+        return bonus;
+    }
+
+    // Бросок кубиков
+    function rollDice(num) {
+        return Array.from({ length: num }, () => Math.floor(Math.random() * 6) + 1);
+    }
+
+    // Битва: атакующий (attackerId) атакует защитника (defenderId) из источника (sourceId)
+    function resolveBattle(sourceId, targetId) {
+        const source = getTerritory(sourceId);
+        const target = getTerritory(targetId);
+        if (source.ownerId === target.ownerId) return false;
+        if (source.armies < 2) { setStatus('В источнике должно быть минимум 2 войска для атаки'); return false; }
+
+        const attacker = getPlayer(source.ownerId);
+        const defender = getPlayer(target.ownerId);
+
+        // Количество кубиков: атакующий до 3 (но не больше армий-1), защитник до 2 (но не больше армий)
+        let attackDice = Math.min(3, source.armies - 1);
+        let defendDice = Math.min(2, target.armies);
+
+        let aRolls = rollDice(attackDice).sort((a,b) => b - a);
+        let dRolls = rollDice(defendDice).sort((a,b) => b - a);
+
+        let aLoss = 0, dLoss = 0;
+        for (let i = 0; i < Math.min(aRolls.length, dRolls.length); i++) {
+            if (aRolls[i] > dRolls[i]) {
+                dLoss++; // защитник теряет
+            } else {
+                aLoss++; // атакующий теряет (ничья в пользу защитника)
+            }
         }
-      }
-      if(state.turnPhase==='fortify' && !state.fortifyUsed){
-        if(uiState.selectedFrom===null && t.owner===uiState.myId && t.armies>1) selectable=true;
-        else if(uiState.selectedFrom!==null && (tid===uiState.selectedFrom || (t.owner===uiState.myId && ADJ[uiState.selectedFrom].includes(tid)))) selectable=true;
-      }
-    }
-    if(selectable) cls+=' selectable';
-    if(tid===uiState.selectedFrom) cls+=' sel-from';
-    if(tid===uiState.selectedTo) cls+=' sel-target';
-    poly.setAttribute('class',cls);
-    poly.addEventListener('click', ()=>onHexClick(tid));
-    svg.appendChild(poly);
-    if(t){
-      const label=document.createElementNS('http://www.w3.org/2000/svg','text');
-      label.setAttribute('x',cx); label.setAttribute('y',cy+5); label.setAttribute('class','hex-label'); label.textContent=t.armies;
-      svg.appendChild(label);
-    }
-  }
-  center.appendChild(svg); layout.appendChild(center);
 
-  const right=el('div',{});
-  const actionCard=el('div',{class:'card action-panel',style:'margin-bottom:14px;'});
-  if(state.phase==='playing'){
-    const curP=playerById(state,state.turnOrder[state.currentTurnIndex]);
-    actionCard.appendChild(el('div',{class:'phase-pill'}, phaseLabel(state.turnPhase)));
-    actionCard.appendChild(el('h3',{style:'margin-bottom:10px;'}, myTurn?'Ваш ход':`Ход: ${curP.name}`));
-    if(myTurn){
-      if(state.turnPhase==='reinforce'){
-        actionCard.appendChild(el('p',{class:'small-muted'}, `Осталось разместить: ${state.reinforcements}`));
-        actionCard.appendChild(el('p',{class:'hint'},'Кликните по своей территории на карте, чтобы поставить войско.'));
-      } else if(state.turnPhase==='attack'){
-        actionCard.appendChild(el('p',{class:'hint'},'Выберите свою территорию, затем вражескую соседнюю — для атаки.'));
-        if(uiState.selectedFrom && uiState.selectedTo && state.territories[uiState.selectedTo].owner!==uiState.myId){
-          const fromArmies=state.territories[uiState.selectedFrom].armies;
-          const maxDice=Math.min(3, fromArmies-1);
-          const diceRow=el('div',{class:'dice-count-btns'});
-          for(let d=1; d<=3; d++) diceRow.appendChild(el('button',{disabled:d>maxDice, class:uiState.attackDice===d?'active':'', onclick:()=>{uiState.attackDice=d; render();}}, String(d)));
-          actionCard.appendChild(el('label',{},'Кубиков атаки'));
-          actionCard.appendChild(diceRow);
-          actionCard.appendChild(el('button',{class:'btn',style:'width:100%;margin-top:6px;',onclick:doAttack}, `Атаковать [${uiState.selectedTo}]`));
+        // Применяем потери
+        source.armies -= aLoss;
+        target.armies -= dLoss;
+
+        // Если защитник потерял все войска, территория переходит атакующему
+        let conquered = false;
+        if (target.armies <= 0) {
+            // Переход: атакующий перемещает минимум 1 войско на захваченную территорию
+            // Он должен оставить хотя бы 1 в источнике
+            if (source.armies >= 1) {
+                // Перемещаем 1 войско (можно больше, но для простоты 1)
+                source.armies -= 1;
+                target.armies = 1;
+                target.ownerId = source.ownerId;
+                conquered = true;
+            } else {
+                // Недостаточно войск для оккупации (быть не может, т.к. атаковали с >=2)
+                target.armies = 1; // восстанавливаем, чтобы не сломать
+            }
         }
-        actionCard.appendChild(el('button',{class:'btn ghost',style:'width:100%;margin-top:10px;',onclick:goToFortify},'Перейти к переброске войск'));
-      } else if(state.turnPhase==='fortify'){
-        actionCard.appendChild(el('p',{class:'hint'}, state.fortifyUsed?'Переброска уже выполнена в этот ход.':'Выберите свою территорию и соседнюю свою — для переброски войск (один раз за ход).'));
-        if(!state.fortifyUsed && uiState.selectedFrom && uiState.selectedTo){
-          const maxAmt=state.territories[uiState.selectedFrom].armies-1;
-          actionCard.appendChild(el('label',{},`Количество (макс. ${maxAmt})`));
-          const amtRow=el('div',{class:'dice-count-btns'});
-          for(let d=1; d<=Math.min(maxAmt,6); d++) amtRow.appendChild(el('button',{class:uiState.fortifyAmount===d?'active':'', onclick:()=>{uiState.fortifyAmount=d; render();}}, String(d)));
-          actionCard.appendChild(amtRow);
-          actionCard.appendChild(el('button',{class:'btn',style:'width:100%;margin-top:6px;',onclick:doFortify},'Перебросить'));
-        }
-        actionCard.appendChild(el('button',{class:'btn',style:'width:100%;margin-top:10px;',onclick:endTurn},'Завершить ход'));
-      }
-    } else actionCard.appendChild(el('p',{class:'hint'},'Ожидание хода соперника...'));
-  } else if(state.phase==='ended') actionCard.appendChild(el('p',{},'Кампания завершена.'));
-  right.appendChild(actionCard);
 
-  const logCard=el('div',{class:'card'});
-  logCard.appendChild(el('h3',{},'Журнал событий'));
-  const logDiv=el('div',{class:'log'});
-  (state.log||[]).forEach(l=>logDiv.appendChild(el('div',{},l)));
-  logCard.appendChild(logDiv);
-  right.appendChild(logCard);
-  layout.appendChild(right); app.appendChild(layout);
-}
+        // Если источник потерял все войска (редко), то он становится нейтральным? Нет, по правилам Risk, если атакующий потерял все, он просто проиграл битву, но территория остаётся его с 0? В классике нельзя атаковать с 1, мы проверяли.
+        // Дополнительно: если источник стал 0, это возможно только если атакующий потерял все, но мы не разрешаем атаку с 1, значит минимум 2, после потерь может стать 0? Если атаковал с 2 и потерял 2 - тогда источник остаётся с 0, это допустимо? По правилам, если атака не удалась, то войска остаются на месте, но если они все погибли, то территория становится незанятой? В стандарте Risk, если атакующий теряет все войска, то он теряет территорию? Нет, территория остаётся его, но с 0 войсками? Обычно минимальное количество - 1, поэтому атакуют с 2+. Мы упростим: если источник стал 0, то мы ставим 1, чтобы не было пустых территорий.
+        if (source.armies < 1) source.armies = 1;
 
-function onHexClick(tid){
-  const state=uiState.game;
-  if(!isMyTurn(state)) return;
-  const t=state.territories[tid];
-  if(state.turnPhase==='reinforce'){
-    if(t.owner===uiState.myId && state.reinforcements>0) placeReinforcement(tid);
-    return;
-  }
-  if(state.turnPhase==='attack'){
-    if(uiState.selectedFrom===null){ if(t.owner===uiState.myId && t.armies>1){ uiState.selectedFrom=tid; render(); } }
-    else if(tid===uiState.selectedFrom){ uiState.selectedFrom=null; uiState.selectedTo=null; render(); }
-    else if(ADJ[uiState.selectedFrom].includes(tid)){
-      if(t.owner===uiState.myId){ uiState.selectedFrom=tid; uiState.selectedTo=null; render(); }
-      else { uiState.selectedTo=tid; uiState.attackDice=1; render(); }
+        // Обновляем количество армий игроков (для отображения)
+        updatePlayerArmies();
+
+        // Возвращаем результат
+        return { conquered, aLoss, dLoss };
     }
-    return;
-  }
-  if(state.turnPhase==='fortify' && !state.fortifyUsed){
-    if(uiState.selectedFrom===null){ if(t.owner===uiState.myId && t.armies>1){ uiState.selectedFrom=tid; render(); } }
-    else if(tid===uiState.selectedFrom){ uiState.selectedFrom=null; uiState.selectedTo=null; render(); }
-    else if(t.owner===uiState.myId && ADJ[uiState.selectedFrom].includes(tid)){ uiState.selectedTo=tid; uiState.fortifyAmount=1; render(); }
-  }
-}
 
-function render(){
-  document.getElementById('headerSub').textContent = uiState.screen==='landing' ? 'пошаговый захват мира' : 'комната: '+uiState.roomCode;
-  if(uiState.screen==='landing') renderLanding();
-  else if(uiState.screen==='lobby'){ if(uiState.game && uiState.game.phase==='playing'){ uiState.screen='game'; renderGame(); } else renderLobby(); }
-  else if(uiState.screen==='game') renderGame();
-}
+    function updatePlayerArmies() {
+        game.players.forEach(p => {
+            p.armiesTotal = game.territories.filter(t => t.ownerId === p.id).reduce((sum, t) => sum + t.armies, 0);
+        });
+    }
 
-// if opened via invite link ?room=CODE, pre-fill the join form with that code
-(function initFromLink(){
-  const params = new URLSearchParams(location.search);
-  const room = params.get('room');
-  if(room) window.__prefillRoom = room.toUpperCase();
-})();
+    // Проверка на победу
+    function checkWin() {
+        const totalTerritories = game.territories.length;
+        for (let p of game.players) {
+            if (countTerritories(p.id) === totalTerritories) {
+                game.gameOver = true;
+                return p;
+            }
+        }
+        return null;
+    }
 
-render();
+    // ============================================================
+    //  ХОД ИГРОКА (интерфейс)
+    // ============================================================
+    function startTurn(playerId) {
+        if (game.gameOver) return;
+        game.currentPlayer = playerId;
+        const player = getPlayer(playerId);
+
+        // Если это компьютер — запускаем AI
+        if (player.id === 1) {
+            setStatus('Ход компьютера...');
+            disableButtons(true);
+            // Задержка для имитации мышления
+            if (game.aiTimeout) clearTimeout(game.aiTimeout);
+            game.aiTimeout = setTimeout(() => {
+                aiTurn();
+            }, 600);
+            return;
+        }
+
+        // Человек
+        disableButtons(false);
+        // Фаза подкрепления
+        const bonus = calculateReinforcements(playerId);
+        player.armiesTotal += bonus;
+        updatePlayerArmies();
+        game.phase = 'reinforce';
+        setStatus(`Подкрепление: +${bonus} войск. Кликните по своей территории, чтобы разместить (у вас ${player.armiesTotal} свободных).`);
+        // Сброс выбора
+        game.selectedFrom = null;
+        game.selectedTo = null;
+        updateUI();
+        drawMap();
+    }
+
+    // Обработка клика по территории
+    function handleTerritoryClick(terrId) {
+        if (game.gameOver) return;
+        const terr = getTerritory(terrId);
+        const player = getPlayer(game.currentPlayer);
+
+        // ---- Начальная расстановка ----
+        if (game.phase === 'place_initial') {
+            if (terr.ownerId !== null) {
+                setStatus('Эта территория уже занята, выберите свободную.');
+                return;
+            }
+            // Ставим 1 войско текущего игрока
+            terr.ownerId = game.currentPlayer;
+            terr.armies = 1;
+            player.armiesTotal -= 1;
+            // Проверяем, все ли территории заняты?
+            const free = game.territories.filter(t => t.ownerId === null);
+            if (free.length === 0) {
+                // Расстановка завершена
+                game.initialPlacementDone = true;
+                // Передаём ход первому игроку
+                game.currentPlayer = 0;
+                startTurn(0);
+            } else {
+                // Следующий игрок
+                game.currentPlayer = (game.currentPlayer + 1) % game.players.length;
+                // Если следующий игрок компьютер, он тоже должен расставить по одной (автоматически)
+                // Упростим: дадим компьютеру автоматически занять свободную территорию
+                if (game.currentPlayer === 1) {
+                    // Авто-расстановка для компьютера
+                    const free2 = game.territories.filter(t => t.ownerId === null);
+                    if (free2.length > 0) {
+                        const rand = free2[Math.floor(Math.random() * free2.length)];
+                        rand.ownerId = 1;
+                        rand.armies = 1;
+                        getPlayer(1).armiesTotal -= 1;
+                        // Проверяем, не закончилась ли расстановка
+                        const free3 = game.territories.filter(t => t.ownerId === null);
+                        if (free3.length === 0) {
+                            game.initialPlacementDone = true;
+                            game.currentPlayer = 0;
+                            startTurn(0);
+                        } else {
+                            // Снова ход человека
+                            game.currentPlayer = 0;
+                            setStatus('Ваша очередь расстановки. Кликните по свободной территории.');
+                        }
+                    }
+                } else {
+                    setStatus('Расстановка: кликните по свободной территории.');
+                }
+                updateUI();
+                drawMap();
+            }
+            return;
+        }
+
+        // ---- Основные фазы ----
+        // Проверяем, что территория принадлежит текущему игроку для некоторых действий
+        if (game.phase === 'reinforce') {
+            // Размещение подкрепления
+            if (terr.ownerId !== game.currentPlayer) {
+                setStatus('Вы можете размещать войска только на своих территориях.');
+                return;
+            }
+            if (player.armiesTotal <= 0) {
+                setStatus('У вас нет свободных войск для размещения.');
+                return;
+            }
+            // Размещаем 1 войско
+            terr.armies += 1;
+            player.armiesTotal -= 1;
+            updatePlayerArmies();
+            // Если войска кончились, переходим в фазу атаки
+            if (player.armiesTotal === 0) {
+                game.phase = 'attack';
+                setStatus('Фаза атаки: выберите свою территорию с >=2 войсками, затем вражескую соседнюю.');
+                game.selectedFrom = null;
+            } else {
+                setStatus(`Размещено. Осталось ${player.armiesTotal} войск. Кликните по своей территории.`);
+            }
+            updateUI();
+            drawMap();
+            return;
+        }
+
+        if (game.phase === 'attack') {
+            // Если ещё не выбран источник
+            if (game.selectedFrom === null) {
+                // Выбираем источник: должна быть своя территория с >=2 войсками
+                if (terr.ownerId !== game.currentPlayer) {
+                    setStatus('Выберите свою территорию для атаки (должно быть >=2 войск).');
+                    return;
+                }
+                if (terr.armies < 2) {
+                    setStatus('Недостаточно войск для атаки (нужно минимум 2).');
+                    return;
+                }
+                // Проверяем, есть ли вражеские соседи
+                const enemies = getEnemyNeighbors(terr.id, game.currentPlayer);
+                if (enemies.length === 0) {
+                    setStatus('У этой территории нет вражеских соседей.');
+                    return;
+                }
+                game.selectedFrom = terr.id;
+                setStatus(`Выбран источник: ${terr.name}. Теперь выберите вражескую соседнюю территорию для атаки.`);
+                drawMap();
+                return;
+            } else {
+                // Уже выбран источник — пытаемся атаковать цель
+                const source = getTerritory(game.selectedFrom);
+                // Цель должна быть соседней, вражеской
+                if (!source.neighbors.includes(terr.id)) {
+                    setStatus('Выбранная территория не является соседней с источником.');
+                    return;
+                }
+                if (terr.ownerId === game.currentPlayer) {
+                    setStatus('Нельзя атаковать свою территорию.');
+                    return;
+                }
+                if (terr.ownerId === null) {
+                    setStatus('Эта территория нейтральна, её нельзя атаковать (должна быть захвачена ранее).');
+                    return;
+                }
+                // Проведём битву
+                const result = resolveBattle(source.id, terr.id);
+                updatePlayerArmies();
+                // Проверка на победу
+                const winner = checkWin();
+                if (winner) {
+                    setStatus(`🏆 Игрок ${winner.name} победил! Захвачены все территории!`);
+                    game.gameOver = true;
+                    disableButtons(true);
+                    drawMap();
+                    updateUI();
+                    return;
+                }
+                // Если захват удался, можно продолжить атаку с того же источника или выбрать новый
+                if (result.conquered) {
+                    setStatus(`Захват! ${terr.name} теперь ваш. Можете продолжить атаку (выберите источник) или завершить ход.`);
+                    // Сбрасываем selectedFrom, чтобы можно было выбрать новый источник или продолжать с этого же
+                    game.selectedFrom = null;
+                    // Но также можно разрешить атаковать дальше с этой же территории — пользователь сам выберет.
+                } else {
+                    setStatus(`Битва завершена. Потери: атакующий ${result.aLoss}, защитник ${result.dLoss}. Выберите источник для атаки или завершите ход.`);
+                    game.selectedFrom = null;
+                }
+                drawMap();
+                updateUI();
+                return;
+            }
+        }
+
+        if (game.phase === 'move') {
+            // Перемещение войск между своими территориями
+            if (game.selectedFrom === null) {
+                // Выбираем источник (своя территория с >1 войска)
+                if (terr.ownerId !== game.currentPlayer) {
+                    setStatus('Выберите свою территорию с более чем 1 войском для перемещения.');
+                    return;
+                }
+                if (terr.armies <= 1) {
+                    setStatus('Нужно минимум 2 войска, чтобы оставить 1 и переместить остальные.');
+                    return;
+                }
+                // Проверяем, есть ли соседние свои территории
+                const ownNeighbors = getControlledNeighbors(terr.id, game.currentPlayer);
+                if (ownNeighbors.length === 0) {
+                    setStatus('Нет соседних своих территорий для перемещения.');
+                    return;
+                }
+                game.selectedFrom = terr.id;
+                setStatus(`Выбран источник: ${terr.name}. Теперь выберите соседнюю свою территорию для перемещения.`);
+                drawMap();
+                return;
+            } else {
+                // Цель перемещения
+                const source = getTerritory(game.selectedFrom);
+                if (!source.neighbors.includes(terr.id)) {
+                    setStatus('Цель не является соседней с источником.');
+                    return;
+                }
+                if (terr.ownerId !== game.currentPlayer) {
+                    setStatus('Можно перемещать только на свои территории.');
+                    return;
+                }
+                if (source.armies <= 1) {
+                    setStatus('В источнике недостаточно войск для перемещения (нужно >1).');
+                    return;
+                }
+                // Перемещаем все, кроме одного (или сколько хочет игрок? Упростим: перемещаем все, кроме 1)
+                const toMove = source.armies - 1;
+                source.armies = 1;
+                terr.armies += toMove;
+                updatePlayerArmies();
+                setStatus(`Перемещено ${toMove} войск с ${source.name} на ${terr.name}. Ход завершён. Нажмите "Завершить ход".`);
+                game.selectedFrom = null;
+                game.phase = 'move_done'; // чтобы не давать больше перемещать в этом ходу
+                drawMap();
+                updateUI();
+                return;
+            }
+        }
+
+        // Если фаза 'move_done' или другие — просто игнорируем
+        if (game.phase === 'move_done') {
+            setStatus('Перемещение уже выполнено. Завершите ход.');
+        }
+    }
+
+    // ============================================================
+    //  КОМПЬЮТЕРНЫЙ ИИ (упрощённый)
+    // ============================================================
+    function aiTurn() {
+        if (game.gameOver) return;
+        const player = getPlayer(1);
+        // 1. Подкрепление
+        const bonus = calculateReinforcements(1);
+        player.armiesTotal += bonus;
+        updatePlayerArmies();
+
+        // Размещаем подкрепление на свои территории (равномерно)
+        const own = getPlayerTerritories(1);
+        if (own.length > 0 && player.armiesTotal > 0) {
+            // Размещаем по одному на каждую, пока не кончатся
+            let i = 0;
+            while (player.armiesTotal > 0) {
+                own[i % own.length].armies += 1;
+                player.armiesTotal -= 1;
+                i++;
+            }
+            updatePlayerArmies();
+        }
+
+        // 2. Атака: ищем территории с >=2 войсками и атакуем вражеских соседей
+        let attacked = false;
+        for (let t of own) {
+            if (t.armies < 2) continue;
+            const enemies = getEnemyNeighbors(t.id, 1);
+            if (enemies.length === 0) continue;
+            // Выбираем врага с наименьшим количеством войск
+            enemies.sort((a, b) => a.armies - b.armies);
+            const target = enemies[0];
+            // Атакуем
+            const result = resolveBattle(t.id, target.id);
+            updatePlayerArmies();
+            attacked = true;
+            // Если захватили, можем продолжить с этой же территории (но для простоты прервём)
+            if (result.conquered) {
+                // Проверка победы
+                const winner = checkWin();
+                if (winner) {
+                    setStatus(`🏆 Игрок ${winner.name} победил!`);
+                    game.gameOver = true;
+                    disableButtons(true);
+                    drawMap();
+                    updateUI();
+                    return;
+                }
+                // Можно ещё атаковать, но упростим — после одного захвата перейдём к перемещению
+                break;
+            }
+        }
+
+        // 3. Перемещение: если есть территории с >1 войска, перемещаем на соседние свои с малым количеством
+        for (let t of own) {
+            if (t.armies > 1) {
+                const ownNeighbors = getControlledNeighbors(t.id, 1);
+                if (ownNeighbors.length === 0) continue;
+                // Найдём соседа с наименьшим количеством войск
+                ownNeighbors.sort((a, b) => a.armies - b.armies);
+                const target = ownNeighbors[0];
+                const toMove = t.armies - 1;
+                t.armies = 1;
+                target.armies += toMove;
+                updatePlayerArmies();
+                break; // только одно перемещение
+            }
+        }
+
+        // Завершаем ход компьютера
+        setStatus('Компьютер завершил ход.');
+        // Передаём ход человеку
+        game.currentPlayer = 0;
+        startTurn(0);
+    }
+
+    // ============================================================
+    //  ОТРИСОВКА КАРТЫ
+    // ============================================================
+    function drawMap() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Рисуем связи
+        ctx.strokeStyle = '#5d6d7e';
+        ctx.lineWidth = 2;
+        for (let t of game.territories) {
+            for (let nId of t.neighbors) {
+                const n = getTerritory(nId);
+                ctx.beginPath();
+                ctx.moveTo(t.x, t.y);
+                ctx.lineTo(n.x, n.y);
+                ctx.stroke();
+            }
+        }
+
+        // Рисуем территории
+        for (let t of game.territories) {
+            const isSelected = (game.selectedFrom === t.id);
+            const isHighlight = (game.phase === 'attack' && game.selectedFrom !== null && 
+                                 getTerritory(game.selectedFrom).neighbors.includes(t.id) && t.ownerId !== game.currentPlayer);
+
+            let color = '#34495e'; // нейтральная
+            if (t.ownerId !== null) {
+                color = getPlayer(t.ownerId).color;
+            }
+
+            // Радиус
+            const r = 30;
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 8;
+            // Круг
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, r, 0, 2 * Math.PI);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = isSelected ? '#f1c40f' : (isHighlight ? '#e67e22' : '#2c3e50');
+            ctx.lineWidth = isSelected ? 4 : 2;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Название и количество войск
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(t.name, t.x, t.y - 20);
+            ctx.font = 'bold 16px Arial';
+            ctx.fillText(`💂 ${t.armies}`, t.x, t.y + 6);
+            if (t.ownerId !== null) {
+                ctx.font = '12px Arial';
+                ctx.fillText(getPlayer(t.ownerId).name, t.x, t.y + 28);
+            }
+        }
+
+        // Если игра окончена, наложим затемнение и надпись
+        if (game.gameOver) {
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 48px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const winner = checkWin();
+            if (winner) {
+                ctx.fillText(`🏆 ${winner.name} победил!`, canvas.width/2, canvas.height/2);
+            } else {
+                ctx.fillText('Игра окончена', canvas.width/2, canvas.height/2);
+            }
+        }
+    }
+
+    // ============================================================
+    //  ОБНОВЛЕНИЕ UI
+    // ============================================================
+    function updateUI() {
+        const current = getPlayer(game.currentPlayer);
+        document.getElementById('currentPlayerTag').textContent = current ? current.name : '—';
+        document.getElementById('currentPlayerTag').style.background = current ? current.color : '#999';
+        const totalArmies = current ? current.armiesTotal : 0;
+        document.getElementById('armyCount').textContent = `💂 ${totalArmies}`;
+        // Кнопка завершения хода
+        const btn = document.getElementById('endTurnBtn');
+        if (game.gameOver || game.currentPlayer === 1) {
+            btn.disabled = true;
+        } else {
+            btn.disabled = false;
+        }
+    }
+
+    function setStatus(msg) {
+        document.getElementById('statusMessage').textContent = msg;
+    }
+
+    function disableButtons(disabled) {
+        document.getElementById('endTurnBtn').disabled = disabled;
+    }
+
+    // ============================================================
+    //  ОБРАБОТКА КЛИКОВ НА CANVAS
+    // ============================================================
+    canvas.addEventListener('click', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const mouseX = (e.clientX - rect.left) * scaleX;
+        const mouseY = (e.clientY - rect.top) * scaleY;
+
+        // Проверяем попадание в круг территории
+        for (let t of game.territories) {
+            const dx = mouseX - t.x;
+            const dy = mouseY - t.y;
+            if (dx*dx + dy*dy <= 30*30) {
+                handleTerritoryClick(t.id);
+                break;
+            }
+        }
+    });
+
+    // ============================================================
+    //  КНОПКА ЗАВЕРШИТЬ ХОД
+    // ============================================================
+    document.getElementById('endTurnBtn').addEventListener('click', () => {
+        if (game.gameOver) return;
+        if (game.currentPlayer !== 0) return; // только человек
+
+        // Если мы в фазе reinforce, но у человека остались войска — запрещаем завершать?
+        if (game.phase === 'reinforce' && getPlayer(0).armiesTotal > 0) {
+            setStatus('У вас остались неразмещённые войска! Разместите их перед завершением хода.');
+            return;
+        }
+
+        // Если в фазе attack или move или move_done — можно завершать
+        // Передаём ход компьютеру
+        game.currentPlayer = 1;
+        // Сбрасываем выбор
+        game.selectedFrom = null;
+        game.selectedTo = null;
+        startTurn(1);
+    });
+
+    // ============================================================
+    //  НОВАЯ ИГРА
+    // ============================================================
+    document.getElementById('resetBtn').addEventListener('click', () => {
+        if (game.aiTimeout) clearTimeout(game.aiTimeout);
+        initGame();
+    });
+
+    // ============================================================
+    //  ЗАПУСК
+    // ============================================================
+    initGame();
 </script>
 </body>
 </html>

@@ -13,7 +13,7 @@
   html,body{height:100%;}
   body{margin:0;background:radial-gradient(ellipse at 50% -10%, #1c2016 0%, var(--bg) 60%);color:var(--ink);font-family:'Trebuchet MS','Segoe UI',sans-serif;}
   h1,h2,h3{font-family:Georgia,'Iowan Old Style',serif;margin:0;}
-  .wrap{max-width:1280px;margin:0 auto;padding:22px 18px 60px;}
+  .wrap{max-width:1680px;margin:0 auto;padding:16px 18px 40px;}
   header.top{display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:20px;}
   header.top h1{font-size:26px;letter-spacing:3px;text-transform:uppercase;color:var(--gold);font-weight:600;}
   header.top .sub{color:var(--ink-dim);font-size:12px;letter-spacing:2px;text-transform:uppercase;}
@@ -36,16 +36,20 @@
   .lobby-players li{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);}
   .dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;}
   .code-box{font-family:monospace;font-size:22px;letter-spacing:6px;text-align:center;background:#0f110b;border:1px dashed var(--gold-dim);padding:10px;border-radius:4px;color:var(--gold);}
-  .game-layout{display:grid;grid-template-columns:220px 1fr 260px;gap:16px;}
+  .game-layout{display:grid;grid-template-columns:200px 1fr 240px;gap:14px;}
   @media(max-width:960px){.game-layout{grid-template-columns:1fr;}}
   .players-panel li{display:flex;align-items:center;gap:8px;padding:8px 6px;border-radius:4px;margin-bottom:4px;font-size:13px;}
   .players-panel li.turn{background:rgba(201,161,90,.15);box-shadow:inset 0 0 0 1px var(--gold-dim);}
   .players-panel .meta{margin-left:auto;text-align:right;font-size:11px;color:var(--ink-dim);}
-  .board-wrap{position:relative;overflow:hidden;background:#0d0f09;border:1px solid var(--line);border-radius:6px;height:640px;}
+  .players-panel .rm-bot{margin-left:6px;background:none;border:none;color:var(--ink-dim);cursor:pointer;font-size:14px;line-height:1;}
+  .players-panel .rm-bot:hover{color:var(--danger);}
+  .board-wrap{position:relative;overflow:hidden;background:#0d0f09;border:1px solid var(--line);border-radius:6px;height:calc(100vh - 210px);min-height:520px;}
+  .board-wrap:fullscreen{height:100vh;width:100vw;border-radius:0;}
+  .board-wrap:-webkit-full-screen{height:100vh;width:100vw;border-radius:0;}
   .board-viewport{width:100%;height:100%;overflow:hidden;cursor:grab;}
   .board-viewport.dragging{cursor:grabbing;}
-  .board-inner{transform-origin:0 0;}
-  .board-inner svg{display:block;width:1100px;height:auto;}
+  .board-inner{transform-origin:0 0;position:relative;}
+  .board-inner svg{display:block;width:1500px;height:auto;}
   .zoom-controls{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:4px;z-index:5;}
   .zoom-controls button{width:30px;height:30px;border-radius:4px;border:1px solid var(--gold-dim);background:rgba(15,17,11,.85);color:var(--gold);font-size:16px;cursor:pointer;font-weight:700;}
   .territory-label{position:absolute;transform:translate(-50%,-50%);font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 3px #000,0 0 2px #000;pointer-events:none;white-space:nowrap;}
@@ -212,10 +216,23 @@ function renderLobby(){
   }},'Скопировать ссылку-приглашение');
   card.appendChild(copyBtn);
   const list=el('ul',{class:'lobby-players',style:'margin-top:20px;'});
-  state.players.forEach(p=>{ list.appendChild(el('li',{},[el('div',{class:'dot',style:`background:${p.color}`}), el('div',{}, p.name+(p.host?' (хозяин)':''))])); });
+  state.players.forEach(p=>{
+    const me=playerById(state,uiState.myId);
+    const row = el('li',{},[
+      el('div',{class:'dot',style:`background:${p.color}`}),
+      el('div',{}, (p.isBot?'🤖 ':'')+p.name+(p.host?' (хозяин)':''))
+    ]);
+    if(p.isBot && me && me.host){
+      row.appendChild(el('button',{class:'rm-bot',title:'Удалить бота',onclick:()=>socket.emit('remove-bot',{roomCode:uiState.roomCode, botId:p.id})},'✕'));
+    }
+    list.appendChild(row);
+  });
   card.appendChild(list);
   const me=playerById(state,uiState.myId);
   if(me && me.host){
+    if(state.players.length<6){
+      card.appendChild(el('button',{class:'btn ghost',style:'width:100%;margin-bottom:10px;',onclick:()=>socket.emit('add-bot',{roomCode:uiState.roomCode})},'🤖 Добавить бота'));
+    }
     card.appendChild(el('button',{class:'btn',style:'width:100%;',disabled:state.players.length<2,onclick:startGame}, state.players.length<2?'Нужно ≥2 игроков':'Начать войну'));
   } else card.appendChild(el('p',{class:'small-muted'},'Ожидание хозяина комнаты...'));
   container.appendChild(card); app.appendChild(container);
@@ -244,7 +261,7 @@ function renderGame(){
     const eliminated=state.phase==='playing' && !state.turnOrder.includes(p.id);
     pl.appendChild(el('li',{class:'players-panel'+(active?' turn':'')},[
       el('div',{class:'dot',style:`background:${p.color};opacity:${eliminated?0.3:1}`}),
-      el('div',{style:eliminated?'text-decoration:line-through;opacity:.5;':''}, p.name),
+      el('div',{style:eliminated?'text-decoration:line-through;opacity:.5;':''}, (p.isBot?'🤖 ':'')+p.name),
       el('div',{class:'meta'}, eliminated?'выбыл':`${owns} тер. / ${armies} арм.`)
     ]));
   });
@@ -319,6 +336,10 @@ function buildBoard(boardWrap, state){
     el('button',{onclick:()=>{ uiState.zoom=Math.min(4, uiState.zoom*1.25); applyBoardTransform(viewport); }},'+'),
     el('button',{onclick:()=>{ uiState.zoom=Math.max(1, uiState.zoom/1.25); applyBoardTransform(viewport); }},'−'),
     el('button',{onclick:()=>{ uiState.zoom=1; uiState.panX=0; uiState.panY=0; applyBoardTransform(viewport); }},'⤾'),
+    el('button',{title:'Полный экран',onclick:()=>{
+      if(!document.fullscreenElement){ (boardWrap.requestFullscreen||boardWrap.webkitRequestFullscreen||function(){}).call(boardWrap); }
+      else { (document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document); }
+    }},'⛶'),
   ]);
   boardWrap.appendChild(zoomCtrls);
   boardWrap.appendChild(el('div',{class:'attribution'},'Карта: Al MacDonald / F. Lekschas (CC BY-SA)'));
@@ -388,17 +409,20 @@ function buildBoard(boardWrap, state){
     labelsToPlace.push([path, t]);
   });
 
-  // place army-count labels using each path's bounding box (after attach to DOM)
+  // place army-count labels using each path's bounding box (in the SVG's own
+  // layout space, which stays consistent regardless of the pan/zoom transform
+  // applied to .board-inner — using screen coordinates here would drift once
+  // zoomed or panned, since a transformed ancestor becomes the positioning
+  // context for its absolutely-positioned children)
   requestAnimationFrame(()=>{
-    const vpRect = viewport.getBoundingClientRect();
+    const vb = svg.viewBox.baseVal;
+    const scaleX = svg.clientWidth / vb.width;
+    const scaleY = svg.clientHeight / vb.height;
     labelsToPlace.forEach(([path, t])=>{
       try{
         const bbox = path.getBBox();
-        const svgRect = svg.getBoundingClientRect();
-        const scaleX = svgRect.width / svg.viewBox.baseVal.width;
-        const scaleY = svgRect.height / svg.viewBox.baseVal.height;
-        const cx = (bbox.x + bbox.width/2) * scaleX;
-        const cy = (bbox.y + bbox.height/2) * scaleY;
+        const cx = (bbox.x + bbox.width/2 - vb.x) * scaleX;
+        const cy = (bbox.y + bbox.height/2 - vb.y) * scaleY;
         const label = el('div',{class:'territory-label', style:`left:${cx}px;top:${cy}px;`}, String(t.armies));
         inner.appendChild(label);
       }catch(e){}

@@ -2,7 +2,6 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -10,37 +9,79 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ---------- GAME CONSTANTS ----------
-const COLS = 6, ROWS = 5;
-const CONTINENT_BONUS = { A: 3, B: 3, C: 3 };
 const PLAYER_COLORS = ['#c9a15a', '#a1453a', '#4a7ba8', '#4a9463', '#8a63a8', '#c97a34'];
-
-function territoryId(c, r) { return c + '_' + r; }
-function continentOf(c) { return c < 2 ? 'A' : c < 4 ? 'B' : 'C'; }
-function neighborsOf(col, row) {
-  const even = [[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[0,1]];
-  const odd  = [[1,1],[1,0],[0,-1],[-1,0],[-1,1],[0,1]];
-  const deltas = (col % 2 === 0) ? even : odd;
-  const out = [];
-  for (const [dc, dr] of deltas) {
-    const c = col + dc, r = row + dr;
-    if (c >= 0 && c < COLS && r >= 0 && r < ROWS) out.push(territoryId(c, r));
-  }
-  return out;
-}
-const ADJ = {};
-for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) ADJ[territoryId(c, r)] = neighborsOf(c, r);
 
 function roll() { return 1 + Math.floor(Math.random() * 6); }
 function rollN(n) { const a = []; for (let i = 0; i < n; i++) a.push(roll()); return a.sort((x, y) => y - x); }
+function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
 function code(len = 5) {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let s = ''; for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
   return s;
 }
 
+// ---------- REAL-WORLD TERRITORY DATA (loaded once at startup) ----------
+// Territories = real countries (by lowercase ISO 3166-1 alpha-2 code, matching
+// the path ids in the SVG world map used by the client). Adjacency = real
+// land borders. Continents = grouped UN regions, matching classic Risk-style
+// continent bonuses.
+let WORLD_READY = false;
+let TERRITORY_IDS = [];        // e.g. ['us','ca','mx', ...]
+let TERRITORY_CONTINENT = {};  // tid -> continent key
+let ADJ = {};                  // tid -> [tid, ...]
+let CONTINENTS = {};           // key -> { name, bonus, tiles: [tid,...] }
+
+const CONTINENT_NAMES = {
+  'north-america': 'Северная Америка',
+  'south-america': 'Южная Америка',
+  'europe': 'Европа',
+  'africa': 'Африка',
+  'asia': 'Азия',
+  'oceania': 'Океания',
+};
+
+function superContinent(c) {
+  if (c.region === 'Americas') return c.subregion === 'South America' ? 'south-america' : 'north-america';
+  if (c.region === 'Europe') return 'europe';
+  if (c.region === 'Africa') return 'africa';
+  if (c.region === 'Asia') return 'asia';
+  if (c.region === 'Oceania') return 'oceania';
+  return null; // Antarctic / unclassified -> not used as a territory
+}
+
+async function loadWorldData() {
+  const res = await fetch('https://cdn.jsdelivr.net/gh/mledoze/countries/countries.json');
+  const data = await res.json();
+
+  const cca3ToCca2 = {};
+  data.forEach(c => { if (c.cca3 && c.cca2) cca3ToCca2[c.cca3] = c.cca2.toLowerCase(); });
+
+  const included = data.filter(c => c.cca2 && superContinent(c));
+  TERRITORY_IDS = included.map(c => c.cca2.toLowerCase());
+  const idSet = new Set(TERRITORY_IDS);
+
+  included.forEach(c => {
+    const tid = c.cca2.toLowerCase();
+    TERRITORY_CONTINENT[tid] = superContinent(c);
+    const neighbors = (c.borders || [])
+      .map(b => cca3ToCca2[b])
+      .filter(Boolean)
+      .filter(t => idSet.has(t) && t !== tid);
+    ADJ[tid] = [...new Set(neighbors)];
+  });
+
+  Object.keys(CONTINENT_NAMES).forEach(key => {
+    const tiles = TERRITORY_IDS.filter(t => TERRITORY_CONTINENT[t] === key);
+    CONTINENTS[key] = { name: CONTINENT_NAMES[key], tiles, bonus: Math.max(2, Math.round(tiles.length / 5)) };
+  });
+
+  WORLD_READY = true;
+  console.log(`World data loaded: ${TERRITORY_IDS.length} territories across ${Object.keys(CONTINENTS).length} continents.`);
+  io.emit('world-info', { adj: ADJ });
+}
+loadWorldData().catch(err => console.error('Failed to load world data:', err));
+
 // ---------- IN-MEMORY ROOM STORE ----------
-// rooms[roomCode] = full game state object
 const rooms = {};
 
 function playerById(state, id) { return state.players.find(p => p.id === id); }
@@ -48,10 +89,10 @@ function ownedTerritories(state, id) { return Object.entries(state.territories).
 
 function calcReinforcements(state, playerId) {
   const owned = ownedTerritories(state, playerId);
-  let base = Math.max(3, Math.floor(owned.length / 3));
-  for (const key of Object.keys(CONTINENT_BONUS)) {
-    const tiles = Object.keys(state.territories).filter(t => state.territories[t].continent === key);
-    if (tiles.length && tiles.every(t => state.territories[t].owner === playerId)) base += CONTINENT_BONUS[key];
+  let base = Math.max(3, Math.floor(owned.length / 6));
+  for (const key of Object.keys(CONTINENTS)) {
+    const tiles = CONTINENTS[key].tiles;
+    if (tiles.length && tiles.every(t => state.territories[t] && state.territories[t].owner === playerId)) base += CONTINENTS[key].bonus;
   }
   return base;
 }
@@ -74,17 +115,13 @@ function checkEliminationsAndWin(state) {
     addLog(state, `👑 ${playerById(state, state.winner).name} побеждает и правит миром!`);
   }
 }
-function broadcast(roomCode) {
-  if (rooms[roomCode]) io.to(roomCode).emit('state', rooms[roomCode]);
-}
-function isTurn(state, playerId) {
-  return state.phase === 'playing' && state.turnOrder[state.currentTurnIndex] === playerId;
-}
+function broadcast(roomCode) { if (rooms[roomCode]) io.to(roomCode).emit('state', rooms[roomCode]); }
+function isTurn(state, playerId) { return state.phase === 'playing' && state.turnOrder[state.currentTurnIndex] === playerId; }
 
 // ---------- SOCKET HANDLERS ----------
 io.on('connection', (socket) => {
-  let currentRoom = null;
   let myPlayerId = null;
+  if (WORLD_READY) socket.emit('world-info', { adj: ADJ });
 
   socket.on('create-room', ({ name, color, playerId }) => {
     const roomCode = code();
@@ -97,7 +134,6 @@ io.on('connection', (socket) => {
       territories: {}, log: [`${name} создал(а) комнату.`]
     };
     rooms[roomCode] = state;
-    currentRoom = roomCode;
     socket.join(roomCode);
     socket.emit('joined', { roomCode, playerId });
     broadcast(roomCode);
@@ -111,7 +147,6 @@ io.on('connection', (socket) => {
       return socket.emit('error-msg', 'Игра уже началась в этой комнате.');
     }
     myPlayerId = playerId;
-    currentRoom = roomCode;
     socket.join(roomCode);
     if (!playerById(state, playerId)) {
       if (state.players.length >= 6) return socket.emit('error-msg', 'Комната заполнена (макс. 6 игроков).');
@@ -125,22 +160,19 @@ io.on('connection', (socket) => {
   socket.on('start-game', ({ roomCode }) => {
     const state = rooms[roomCode];
     if (!state || state.players.length < 2) return;
-    const tiles = [];
-    for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) tiles.push(territoryId(c, r));
-    for (let i = tiles.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [tiles[i], tiles[j]] = [tiles[j], tiles[i]]; }
+    if (!WORLD_READY) return socket.emit('error-msg', 'Карта мира ещё загружается, попробуйте через пару секунд.');
+    const tiles = shuffle([...TERRITORY_IDS]);
     const players = state.players;
     const territories = {};
     tiles.forEach((tid, i) => {
-      const [c] = tid.split('_').map(Number);
-      territories[tid] = { owner: players[i % players.length].id, armies: 1, continent: continentOf(c) };
+      territories[tid] = { owner: players[i % players.length].id, armies: 1, continent: TERRITORY_CONTINENT[tid] };
     });
-    const pool = 15;
+    const pool = 25;
     for (const p of players) {
       const mine = Object.keys(territories).filter(t => territories[t].owner === p.id);
       for (let i = 0; i < pool; i++) territories[mine[Math.floor(Math.random() * mine.length)]].armies++;
     }
-    const order = players.map(p => p.id);
-    for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+    const order = shuffle(players.map(p => p.id));
     state.territories = territories;
     state.turnOrder = order;
     state.currentTurnIndex = 0;
@@ -172,7 +204,7 @@ io.on('connection', (socket) => {
     if (!state || !isTurn(state, myPlayerId) || state.turnPhase !== 'attack') return;
     const fromT = state.territories[from], toT = state.territories[to];
     if (!fromT || !toT || fromT.owner !== myPlayerId || toT.owner === myPlayerId) return;
-    if (!ADJ[from].includes(to)) return;
+    if (!ADJ[from] || !ADJ[from].includes(to)) return;
     const dCount = Math.min(diceCount, fromT.armies - 1, 3);
     if (dCount < 1) return;
     const defCount = Math.min(2, toT.armies);
@@ -185,13 +217,13 @@ io.on('connection', (socket) => {
     toT.armies -= defLoss;
     const attackerName = playerById(state, myPlayerId).name;
     const defenderName = playerById(state, toT.owner).name;
-    let text = `⚔ ${attackerName} атакует из [${from}] на [${to}]. 🎲 ${atkRolls.join(',')} vs 🎲 ${defRolls.join(',')} → атакующий -${atkLoss}, защитник -${defLoss}.`;
+    let text = `⚔ ${attackerName} атакует из [${from.toUpperCase()}] на [${to.toUpperCase()}]. 🎲 ${atkRolls.join(',')} vs 🎲 ${defRolls.join(',')} → атакующий -${atkLoss}, защитник -${defLoss}.`;
     if (toT.armies <= 0) {
       toT.owner = myPlayerId;
       toT.armies = dCount;
       fromT.armies -= dCount;
       if (fromT.armies < 1) fromT.armies = 1;
-      text += ` 🏳 Территория [${to}] захвачена у ${defenderName}!`;
+      text += ` 🏳 Территория [${to.toUpperCase()}] захвачена у ${defenderName}!`;
     }
     addLog(state, text);
     checkEliminationsAndWin(state);
@@ -211,13 +243,13 @@ io.on('connection', (socket) => {
     if (!state || !isTurn(state, myPlayerId) || state.turnPhase !== 'fortify' || state.fortifyUsed) return;
     const fromT = state.territories[from], toT = state.territories[to];
     if (!fromT || !toT || fromT.owner !== myPlayerId || toT.owner !== myPlayerId) return;
-    if (!ADJ[from].includes(to)) return;
+    if (!ADJ[from] || !ADJ[from].includes(to)) return;
     const amt = Math.min(amount, fromT.armies - 1);
     if (amt < 1) return;
     fromT.armies -= amt;
     toT.armies += amt;
     state.fortifyUsed = true;
-    addLog(state, `🚚 ${playerById(state, myPlayerId).name} перебрасывает ${amt} армий из [${from}] в [${to}].`);
+    addLog(state, `🚚 ${playerById(state, myPlayerId).name} перебрасывает ${amt} армий из [${from.toUpperCase()}] в [${to.toUpperCase()}].`);
     broadcast(roomCode);
   });
 
@@ -233,8 +265,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    // Player stays in the game (their playerId persists client-side in localStorage),
-    // so they can simply reload/rejoin the same room code to reconnect.
+    // playerId persists client-side (localStorage), so reloading/rejoining the
+    // same room reconnects them to the same player automatically.
   });
 });
 

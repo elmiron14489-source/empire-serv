@@ -117,6 +117,138 @@ function checkEliminationsAndWin(state) {
 }
 function broadcast(roomCode) { if (rooms[roomCode]) io.to(roomCode).emit('state', rooms[roomCode]); }
 function isTurn(state, playerId) { return state.phase === 'playing' && state.turnOrder[state.currentTurnIndex] === playerId; }
+function currentPlayer(state) { return playerById(state, state.turnOrder[state.currentTurnIndex]); }
+
+// ---------- BOTS ----------
+const BOT_NAMES = ['Álvaro', 'Ingrid', 'Chen Wei', 'Fatima', 'Sven', 'Kenji', 'Amara', 'Dmitri'];
+
+function addBot(state) {
+  if (state.players.length >= 6) return false;
+  const usedColors = new Set(state.players.map(p => p.color));
+  const color = PLAYER_COLORS.find(c => !usedColors.has(c)) || PLAYER_COLORS[state.players.length % PLAYER_COLORS.length];
+  const usedNames = new Set(state.players.map(p => p.name));
+  const name = 'Бот ' + (BOT_NAMES.find(n => !usedNames.has('Бот ' + n)) || Math.floor(Math.random() * 1000));
+  const id = 'bot_' + Math.random().toString(36).slice(2, 10);
+  state.players.push({ id, name, color, host: false, isBot: true });
+  addLog(state, `🤖 ${name} присоединился(-ась) к игре.`);
+  return true;
+}
+
+function maybeScheduleBotTurn(roomCode) {
+  const state = rooms[roomCode];
+  if (!state || state.phase !== 'playing') return;
+  const cp = currentPlayer(state);
+  if (cp && cp.isBot) setTimeout(() => runBotTurn(roomCode), 900 + Math.random() * 600);
+}
+
+function runBotTurn(roomCode) {
+  const state = rooms[roomCode];
+  if (!state || state.phase !== 'playing') return;
+  const bot = currentPlayer(state);
+  if (!bot || !bot.isBot) return;
+  const botId = bot.id;
+
+  // --- Reinforce: prioritize border territories (touching an enemy) ---
+  while (state.reinforcements > 0) {
+    const owned = ownedTerritories(state, botId);
+    if (owned.length === 0) break;
+    const border = owned.filter(t => (ADJ[t] || []).some(n => state.territories[n] && state.territories[n].owner !== botId));
+    const pool = border.length ? border : owned;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    state.territories[pick].armies++;
+    state.reinforcements--;
+  }
+  state.turnPhase = 'attack';
+  addLog(state, `${bot.name} завершил(а) подкрепление, начинается фаза атаки.`);
+  broadcast(roomCode);
+  setTimeout(() => botAttackStep(roomCode, botId, 20), 800 + Math.random() * 400);
+}
+
+function botAttackStep(roomCode, botId, attacksLeft) {
+  const st = rooms[roomCode];
+  if (!st || st.phase !== 'playing' || st.turnOrder[st.currentTurnIndex] !== botId) return;
+  const bot = playerById(st, botId);
+
+  let best = null;
+  for (const from of ownedTerritories(st, botId)) {
+    const fromT = st.territories[from];
+    if (fromT.armies < 2) continue;
+    for (const to of (ADJ[from] || [])) {
+      const toT = st.territories[to];
+      if (!toT || toT.owner === botId) continue;
+      const advantage = fromT.armies - toT.armies;
+      if (advantage >= 2 || (fromT.armies >= 3 && fromT.armies > toT.armies)) {
+        if (!best || advantage > best.advantage) best = { from, to, advantage };
+      }
+    }
+  }
+
+  if (!best || attacksLeft <= 0 || Math.random() < 0.12) {
+    st.turnPhase = 'fortify';
+    broadcast(roomCode);
+    setTimeout(() => botFortifyAndEnd(roomCode, botId), 700 + Math.random() * 500);
+    return;
+  }
+
+  const fromT = st.territories[best.from], toT = st.territories[best.to];
+  const dCount = Math.min(3, fromT.armies - 1);
+  const defCount = Math.min(2, toT.armies);
+  const atkRolls = rollN(dCount), defRolls = rollN(defCount);
+  let atkLoss = 0, defLoss = 0;
+  for (let i = 0; i < Math.min(atkRolls.length, defRolls.length); i++) {
+    if (atkRolls[i] > defRolls[i]) defLoss++; else atkLoss++;
+  }
+  fromT.armies -= atkLoss;
+  toT.armies -= defLoss;
+  const defenderName = playerById(st, toT.owner).name;
+  let text = `⚔ ${bot.name} атакует из [${best.from.toUpperCase()}] на [${best.to.toUpperCase()}]. 🎲 ${atkRolls.join(',')} vs 🎲 ${defRolls.join(',')} → атакующий -${atkLoss}, защитник -${defLoss}.`;
+  if (toT.armies <= 0) {
+    toT.owner = botId;
+    toT.armies = dCount;
+    fromT.armies -= dCount;
+    if (fromT.armies < 1) fromT.armies = 1;
+    text += ` 🏳 Территория [${best.to.toUpperCase()}] захвачена у ${defenderName}!`;
+  }
+  addLog(st, text);
+  checkEliminationsAndWin(st);
+  broadcast(roomCode);
+  if (st.phase === 'ended') return;
+  setTimeout(() => botAttackStep(roomCode, botId, attacksLeft - 1), 900 + Math.random() * 500);
+}
+
+function botFortifyAndEnd(roomCode, botId) {
+  const st = rooms[roomCode];
+  if (!st || st.phase !== 'playing' || st.turnOrder[st.currentTurnIndex] !== botId) return;
+  const owned = ownedTerritories(st, botId);
+  const interior = owned.filter(t => (ADJ[t] || []).every(n => st.territories[n] && st.territories[n].owner === botId) && st.territories[t].armies > 3);
+  const border = owned.filter(t => (ADJ[t] || []).some(n => st.territories[n] && st.territories[n].owner !== botId));
+  if (interior.length && border.length && !st.fortifyUsed) {
+    const from = interior[Math.floor(Math.random() * interior.length)];
+    const candidates = (ADJ[from] || []).filter(n => border.includes(n));
+    if (candidates.length) {
+      const to = candidates[Math.floor(Math.random() * candidates.length)];
+      const amt = Math.max(1, Math.floor((st.territories[from].armies - 1) / 2));
+      st.territories[from].armies -= amt;
+      st.territories[to].armies += amt;
+      st.fortifyUsed = true;
+      addLog(st, `🚚 ${playerById(st, botId).name} перебрасывает ${amt} армий из [${from.toUpperCase()}] в [${to.toUpperCase()}].`);
+    }
+  }
+  broadcast(roomCode);
+  setTimeout(() => botEndTurn(roomCode, botId), 600 + Math.random() * 400);
+}
+
+function botEndTurn(roomCode, botId) {
+  const st = rooms[roomCode];
+  if (!st || st.phase !== 'playing' || st.turnOrder[st.currentTurnIndex] !== botId) return;
+  st.currentTurnIndex = (st.currentTurnIndex + 1) % st.turnOrder.length;
+  st.turnPhase = 'reinforce';
+  st.fortifyUsed = false;
+  st.reinforcements = calcReinforcements(st, st.turnOrder[st.currentTurnIndex]);
+  addLog(st, `➡ Ход переходит к ${playerById(st, st.turnOrder[st.currentTurnIndex]).name}.`);
+  broadcast(roomCode);
+  maybeScheduleBotTurn(roomCode);
+}
 
 // ---------- SOCKET HANDLERS ----------
 io.on('connection', (socket) => {
@@ -157,6 +289,26 @@ io.on('connection', (socket) => {
     broadcast(roomCode);
   });
 
+  socket.on('add-bot', ({ roomCode }) => {
+    const state = rooms[roomCode];
+    if (!state || state.phase !== 'lobby') return;
+    const me = playerById(state, myPlayerId);
+    if (!me || !me.host) return;
+    if (addBot(state)) broadcast(roomCode);
+  });
+
+  socket.on('remove-bot', ({ roomCode, botId }) => {
+    const state = rooms[roomCode];
+    if (!state || state.phase !== 'lobby') return;
+    const me = playerById(state, myPlayerId);
+    if (!me || !me.host) return;
+    const target = playerById(state, botId);
+    if (!target || !target.isBot) return;
+    state.players = state.players.filter(p => p.id !== botId);
+    addLog(state, `${target.name} удалён(а) из комнаты.`);
+    broadcast(roomCode);
+  });
+
   socket.on('start-game', ({ roomCode }) => {
     const state = rooms[roomCode];
     if (!state || state.players.length < 2) return;
@@ -182,6 +334,7 @@ io.on('connection', (socket) => {
     state.reinforcements = calcReinforcements(state, order[0]);
     addLog(state, `🗺 Игра началась! Первый ход: ${playerById(state, order[0]).name}.`);
     broadcast(roomCode);
+    maybeScheduleBotTurn(roomCode);
   });
 
   socket.on('place-reinforcement', ({ roomCode, tid }) => {
@@ -262,6 +415,7 @@ io.on('connection', (socket) => {
     state.reinforcements = calcReinforcements(state, state.turnOrder[state.currentTurnIndex]);
     addLog(state, `➡ Ход переходит к ${playerById(state, state.turnOrder[state.currentTurnIndex]).name}.`);
     broadcast(roomCode);
+    maybeScheduleBotTurn(roomCode);
   });
 
   socket.on('disconnect', () => {

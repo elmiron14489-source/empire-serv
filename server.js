@@ -21,15 +21,18 @@ function code(len = 5) {
 }
 
 // ---------- REAL-WORLD TERRITORY DATA (loaded once at startup) ----------
-// Territories = real countries (by lowercase ISO 3166-1 alpha-2 code, matching
-// the path ids in the SVG world map used by the client). Adjacency = real
-// land borders. Continents = grouped UN regions, matching classic Risk-style
-// continent bonuses.
+// Territories = countries grouped by UN geographic subregion (e.g. "Western
+// Europe", "Southern Africa"), so the map has ~20 large zones instead of one
+// per country — similar in scale to classic Risk. Adjacency between zones is
+// derived from real land borders between their member countries. Continents
+// group the zones for classic Risk-style continent-control bonuses.
 let WORLD_READY = false;
-let TERRITORY_IDS = [];        // e.g. ['us','ca','mx', ...]
-let TERRITORY_CONTINENT = {};  // tid -> continent key
-let ADJ = {};                  // tid -> [tid, ...]
-let CONTINENTS = {};           // key -> { name, bonus, tiles: [tid,...] }
+let TERRITORY_IDS = [];          // e.g. ['northern-america','western-europe', ...]
+let TERRITORY_CONTINENT = {};    // tid -> continent key
+let TERRITORY_DISPLAY_NAME = {}; // tid -> human-readable name (Russian)
+let COUNTRY_TO_TERRITORY = {};   // cca2 -> tid (used to color the underlying country shapes)
+let ADJ = {};                    // tid -> [tid, ...]
+let CONTINENTS = {};             // key -> { name, bonus, tiles: [tid,...] }
 
 const CONTINENT_NAMES = {
   'north-america': 'Северная Америка',
@@ -40,14 +43,33 @@ const CONTINENT_NAMES = {
   'oceania': 'Океания',
 };
 
-function superContinent(c) {
-  if (c.region === 'Americas') return c.subregion === 'South America' ? 'south-america' : 'north-america';
-  if (c.region === 'Europe') return 'europe';
-  if (c.region === 'Africa') return 'africa';
-  if (c.region === 'Asia') return 'asia';
-  if (c.region === 'Oceania') return 'oceania';
-  return null; // Antarctic / unclassified -> not used as a territory
-}
+// UN M49 subregion -> our continent bucket, and -> Russian display name
+const SUBREGION_INFO = {
+  'Northern America': { continent: 'north-america', name: 'Северная Америка' },
+  'Central America': { continent: 'north-america', name: 'Центральная Америка' },
+  'Caribbean': { continent: 'north-america', name: 'Карибы' },
+  'South America': { continent: 'south-america', name: 'Южная Америка' },
+  'Northern Europe': { continent: 'europe', name: 'Северная Европа' },
+  'Western Europe': { continent: 'europe', name: 'Западная Европа' },
+  'Southern Europe': { continent: 'europe', name: 'Южная Европа' },
+  'Eastern Europe': { continent: 'europe', name: 'Восточная Европа' },
+  'Northern Africa': { continent: 'africa', name: 'Северная Африка' },
+  'Western Africa': { continent: 'africa', name: 'Западная Африка' },
+  'Middle Africa': { continent: 'africa', name: 'Центральная Африка' },
+  'Eastern Africa': { continent: 'africa', name: 'Восточная Африка' },
+  'Southern Africa': { continent: 'africa', name: 'Южная Африка' },
+  'Central Asia': { continent: 'asia', name: 'Центральная Азия' },
+  'Eastern Asia': { continent: 'asia', name: 'Восточная Азия' },
+  'South-Eastern Asia': { continent: 'asia', name: 'Юго-Восточная Азия' },
+  'Southern Asia': { continent: 'asia', name: 'Южная Азия' },
+  'Western Asia': { continent: 'asia', name: 'Западная Азия' },
+  'Australia and New Zealand': { continent: 'oceania', name: 'Австралия и Новая Зеландия' },
+  'Melanesia': { continent: 'oceania', name: 'Меланезия' },
+  'Micronesia': { continent: 'oceania', name: 'Микронезия' },
+  'Polynesia': { continent: 'oceania', name: 'Полинезия' },
+};
+
+function slugify(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''); }
 
 async function loadWorldData() {
   const res = await fetch('https://cdn.jsdelivr.net/gh/mledoze/countries/countries.json');
@@ -56,28 +78,45 @@ async function loadWorldData() {
   const cca3ToCca2 = {};
   data.forEach(c => { if (c.cca3 && c.cca2) cca3ToCca2[c.cca3] = c.cca2.toLowerCase(); });
 
-  const included = data.filter(c => c.cca2 && superContinent(c));
-  TERRITORY_IDS = included.map(c => c.cca2.toLowerCase());
-  const idSet = new Set(TERRITORY_IDS);
+  const included = data.filter(c => c.cca2 && c.subregion && SUBREGION_INFO[c.subregion]);
 
+  COUNTRY_TO_TERRITORY = {};
+  included.forEach(c => { COUNTRY_TO_TERRITORY[c.cca2.toLowerCase()] = slugify(c.subregion); });
+
+  TERRITORY_IDS = [...new Set(Object.values(COUNTRY_TO_TERRITORY))];
+  TERRITORY_CONTINENT = {};
+  TERRITORY_DISPLAY_NAME = {};
   included.forEach(c => {
-    const tid = c.cca2.toLowerCase();
-    TERRITORY_CONTINENT[tid] = superContinent(c);
-    const neighbors = (c.borders || [])
-      .map(b => cca3ToCca2[b])
-      .filter(Boolean)
-      .filter(t => idSet.has(t) && t !== tid);
-    ADJ[tid] = [...new Set(neighbors)];
+    const tid = slugify(c.subregion);
+    TERRITORY_CONTINENT[tid] = SUBREGION_INFO[c.subregion].continent;
+    TERRITORY_DISPLAY_NAME[tid] = SUBREGION_INFO[c.subregion].name;
   });
+
+  // country-level borders -> territory-level adjacency
+  const countryBorders = {};
+  included.forEach(c => {
+    countryBorders[c.cca2.toLowerCase()] = (c.borders || []).map(b => cca3ToCca2[b]).filter(Boolean);
+  });
+  const adjSets = {};
+  TERRITORY_IDS.forEach(t => { adjSets[t] = new Set(); });
+  included.forEach(c => {
+    const myTid = COUNTRY_TO_TERRITORY[c.cca2.toLowerCase()];
+    (countryBorders[c.cca2.toLowerCase()] || []).forEach(nb => {
+      const nbTid = COUNTRY_TO_TERRITORY[nb];
+      if (nbTid && nbTid !== myTid) adjSets[myTid].add(nbTid);
+    });
+  });
+  ADJ = {};
+  Object.keys(adjSets).forEach(k => { ADJ[k] = [...adjSets[k]]; });
 
   Object.keys(CONTINENT_NAMES).forEach(key => {
     const tiles = TERRITORY_IDS.filter(t => TERRITORY_CONTINENT[t] === key);
-    CONTINENTS[key] = { name: CONTINENT_NAMES[key], tiles, bonus: Math.max(2, Math.round(tiles.length / 5)) };
+    CONTINENTS[key] = { name: CONTINENT_NAMES[key], tiles, bonus: Math.max(2, Math.round(tiles.length / 2)) };
   });
 
   WORLD_READY = true;
-  console.log(`World data loaded: ${TERRITORY_IDS.length} territories across ${Object.keys(CONTINENTS).length} continents.`);
-  io.emit('world-info', { adj: ADJ });
+  console.log(`World data loaded: ${TERRITORY_IDS.length} territories (grouped by subregion) across ${Object.keys(CONTINENTS).length} continents.`);
+  io.emit('world-info', { adj: ADJ, countryToTerritory: COUNTRY_TO_TERRITORY, names: TERRITORY_DISPLAY_NAME });
 }
 loadWorldData().catch(err => console.error('Failed to load world data:', err));
 
@@ -115,6 +154,8 @@ function checkEliminationsAndWin(state) {
     addLog(state, `👑 ${playerById(state, state.winner).name} побеждает и правит миром!`);
   }
 }
+function tName(tid) { return TERRITORY_DISPLAY_NAME[tid] || tid; }
+
 function broadcast(roomCode) { if (rooms[roomCode]) io.to(roomCode).emit('state', rooms[roomCode]); }
 function isTurn(state, playerId) { return state.phase === 'playing' && state.turnOrder[state.currentTurnIndex] === playerId; }
 function currentPlayer(state) { return playerById(state, state.turnOrder[state.currentTurnIndex]); }
@@ -123,7 +164,7 @@ function currentPlayer(state) { return playerById(state, state.turnOrder[state.c
 const BOT_NAMES = ['Álvaro', 'Ingrid', 'Chen Wei', 'Fatima', 'Sven', 'Kenji', 'Amara', 'Dmitri'];
 
 function addBot(state) {
-  if (state.players.length >= 6) return false;
+  if (state.players.length >= 5) return false;
   const usedColors = new Set(state.players.map(p => p.color));
   const color = PLAYER_COLORS.find(c => !usedColors.has(c)) || PLAYER_COLORS[state.players.length % PLAYER_COLORS.length];
   const usedNames = new Set(state.players.map(p => p.name));
@@ -201,13 +242,13 @@ function botAttackStep(roomCode, botId, attacksLeft) {
   fromT.armies -= atkLoss;
   toT.armies -= defLoss;
   const defenderName = playerById(st, toT.owner).name;
-  let text = `⚔ ${bot.name} атакует из [${best.from.toUpperCase()}] на [${best.to.toUpperCase()}]. 🎲 ${atkRolls.join(',')} vs 🎲 ${defRolls.join(',')} → атакующий -${atkLoss}, защитник -${defLoss}.`;
+  let text = `⚔ ${bot.name} атакует из [${tName(best.from)}] на [${tName(best.to)}]. 🎲 ${atkRolls.join(',')} vs 🎲 ${defRolls.join(',')} → атакующий -${atkLoss}, защитник -${defLoss}.`;
   if (toT.armies <= 0) {
     toT.owner = botId;
     toT.armies = dCount;
     fromT.armies -= dCount;
     if (fromT.armies < 1) fromT.armies = 1;
-    text += ` 🏳 Территория [${best.to.toUpperCase()}] захвачена у ${defenderName}!`;
+    text += ` 🏳 Территория [${tName(best.to)}] захвачена у ${defenderName}!`;
   }
   addLog(st, text);
   checkEliminationsAndWin(st);
@@ -231,7 +272,7 @@ function botFortifyAndEnd(roomCode, botId) {
       st.territories[from].armies -= amt;
       st.territories[to].armies += amt;
       st.fortifyUsed = true;
-      addLog(st, `🚚 ${playerById(st, botId).name} перебрасывает ${amt} армий из [${from.toUpperCase()}] в [${to.toUpperCase()}].`);
+      addLog(st, `🚚 ${playerById(st, botId).name} перебрасывает ${amt} армий из [${tName(from)}] в [${tName(to)}].`);
     }
   }
   broadcast(roomCode);
@@ -253,7 +294,7 @@ function botEndTurn(roomCode, botId) {
 // ---------- SOCKET HANDLERS ----------
 io.on('connection', (socket) => {
   let myPlayerId = null;
-  if (WORLD_READY) socket.emit('world-info', { adj: ADJ });
+  if (WORLD_READY) socket.emit('world-info', { adj: ADJ, countryToTerritory: COUNTRY_TO_TERRITORY, names: TERRITORY_DISPLAY_NAME });
 
   socket.on('create-room', ({ name, color, playerId }) => {
     const roomCode = code();
@@ -281,7 +322,7 @@ io.on('connection', (socket) => {
     myPlayerId = playerId;
     socket.join(roomCode);
     if (!playerById(state, playerId)) {
-      if (state.players.length >= 6) return socket.emit('error-msg', 'Комната заполнена (макс. 6 игроков).');
+      if (state.players.length >= 5) return socket.emit('error-msg', 'Комната заполнена (нужно ровно 5 игроков).');
       state.players.push({ id: playerId, name, color, host: false });
       addLog(state, `${name} присоединился(-ась) к игре.`);
     }
@@ -295,6 +336,16 @@ io.on('connection', (socket) => {
     const me = playerById(state, myPlayerId);
     if (!me || !me.host) return;
     if (addBot(state)) broadcast(roomCode);
+  });
+
+  socket.on('fill-bots', ({ roomCode }) => {
+    const state = rooms[roomCode];
+    if (!state || state.phase !== 'lobby') return;
+    const me = playerById(state, myPlayerId);
+    if (!me || !me.host) return;
+    let added = false;
+    while (state.players.length < 5) { if (!addBot(state)) break; added = true; }
+    if (added) broadcast(roomCode);
   });
 
   socket.on('remove-bot', ({ roomCode, botId }) => {
@@ -311,7 +362,7 @@ io.on('connection', (socket) => {
 
   socket.on('start-game', ({ roomCode }) => {
     const state = rooms[roomCode];
-    if (!state || state.players.length < 2) return;
+    if (!state || state.players.length !== 5) return;
     if (!WORLD_READY) return socket.emit('error-msg', 'Карта мира ещё загружается, попробуйте через пару секунд.');
     const tiles = shuffle([...TERRITORY_IDS]);
     const players = state.players;
@@ -319,7 +370,7 @@ io.on('connection', (socket) => {
     tiles.forEach((tid, i) => {
       territories[tid] = { owner: players[i % players.length].id, armies: 1, continent: TERRITORY_CONTINENT[tid] };
     });
-    const pool = 25;
+    const pool = 15;
     for (const p of players) {
       const mine = Object.keys(territories).filter(t => territories[t].owner === p.id);
       for (let i = 0; i < pool; i++) territories[mine[Math.floor(Math.random() * mine.length)]].armies++;
@@ -370,13 +421,13 @@ io.on('connection', (socket) => {
     toT.armies -= defLoss;
     const attackerName = playerById(state, myPlayerId).name;
     const defenderName = playerById(state, toT.owner).name;
-    let text = `⚔ ${attackerName} атакует из [${from.toUpperCase()}] на [${to.toUpperCase()}]. 🎲 ${atkRolls.join(',')} vs 🎲 ${defRolls.join(',')} → атакующий -${atkLoss}, защитник -${defLoss}.`;
+    let text = `⚔ ${attackerName} атакует из [${tName(from)}] на [${tName(to)}]. 🎲 ${atkRolls.join(',')} vs 🎲 ${defRolls.join(',')} → атакующий -${atkLoss}, защитник -${defLoss}.`;
     if (toT.armies <= 0) {
       toT.owner = myPlayerId;
       toT.armies = dCount;
       fromT.armies -= dCount;
       if (fromT.armies < 1) fromT.armies = 1;
-      text += ` 🏳 Территория [${to.toUpperCase()}] захвачена у ${defenderName}!`;
+      text += ` 🏳 Территория [${tName(to)}] захвачена у ${defenderName}!`;
     }
     addLog(state, text);
     checkEliminationsAndWin(state);
@@ -402,7 +453,7 @@ io.on('connection', (socket) => {
     fromT.armies -= amt;
     toT.armies += amt;
     state.fortifyUsed = true;
-    addLog(state, `🚚 ${playerById(state, myPlayerId).name} перебрасывает ${amt} армий из [${from.toUpperCase()}] в [${to.toUpperCase()}].`);
+    addLog(state, `🚚 ${playerById(state, myPlayerId).name} перебрасывает ${amt} армий из [${tName(from)}] в [${tName(to)}].`);
     broadcast(roomCode);
   });
 

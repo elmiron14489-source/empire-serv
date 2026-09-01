@@ -109,7 +109,14 @@ function loadMapSvg(){
     wrapper.innerHTML = text;
     const svg = wrapper.querySelector('svg');
     svg.removeAttribute('width'); svg.removeAttribute('height');
-    svg.querySelectorAll('path,circle').forEach(p=>{ p.removeAttribute('style'); });
+    // strip any inline fill/style everywhere so per-territory fill (set on
+    // whichever element — <path> or a wrapping <g> for multi-part countries
+    // like Russia, Canada, the US, Australia — cascades correctly via
+    // inheritance instead of being blocked by leftover attributes
+    svg.querySelectorAll('*').forEach(node=>{
+      node.removeAttribute('style');
+      if(node.tagName==='path' || node.tagName==='circle') node.removeAttribute('fill');
+    });
     mapSvgTemplate = svg;
     return svg;
   });
@@ -124,7 +131,13 @@ function phaseLabel(p){ return p==='reinforce'?'Подкрепление':p==='a
 // ---------- SOCKET EVENTS ----------
 socket.on('joined', ({roomCode})=>{ uiState.roomCode=roomCode; uiState.screen='lobby'; render(); });
 socket.on('error-msg', (msg)=>{ uiState.errorMsg=msg; render(); });
-socket.on('world-info', ({adj})=>{ window.__ADJ_HINT = adj; if(uiState.screen==='game') render(); });
+socket.on('world-info', ({adj, countryToTerritory, names})=>{
+  window.__ADJ_HINT = adj;
+  if(countryToTerritory) window.__COUNTRY_TO_TERRITORY = countryToTerritory;
+  if(names) window.__TERRITORY_NAMES = names;
+  if(uiState.screen==='game') render();
+});
+function tName(tid){ return (window.__TERRITORY_NAMES && window.__TERRITORY_NAMES[tid]) || tid; }
 socket.on('state', (state)=>{
   uiState.game=state;
   if(state.phase==='playing' && uiState.screen==='lobby') uiState.screen='game';
@@ -230,10 +243,12 @@ function renderLobby(){
   card.appendChild(list);
   const me=playerById(state,uiState.myId);
   if(me && me.host){
-    if(state.players.length<6){
-      card.appendChild(el('button',{class:'btn ghost',style:'width:100%;margin-bottom:10px;',onclick:()=>socket.emit('add-bot',{roomCode:uiState.roomCode})},'🤖 Добавить бота'));
+    const remaining = 5 - state.players.length;
+    if(remaining>0){
+      card.appendChild(el('button',{class:'btn ghost',style:'width:100%;margin-bottom:8px;',onclick:()=>socket.emit('add-bot',{roomCode:uiState.roomCode})},'🤖 Добавить бота'));
+      card.appendChild(el('button',{class:'btn ghost',style:'width:100%;margin-bottom:10px;',onclick:()=>socket.emit('fill-bots',{roomCode:uiState.roomCode})}, `Заполнить ботами до 5 (+${remaining})`));
     }
-    card.appendChild(el('button',{class:'btn',style:'width:100%;',disabled:state.players.length<2,onclick:startGame}, state.players.length<2?'Нужно ≥2 игроков':'Начать войну'));
+    card.appendChild(el('button',{class:'btn',style:'width:100%;',disabled:state.players.length!==5,onclick:startGame}, state.players.length!==5 ? `Нужно ровно 5 игроков (сейчас ${state.players.length})` : 'Начать войну'));
   } else card.appendChild(el('p',{class:'small-muted'},'Ожидание хозяина комнаты...'));
   container.appendChild(card); app.appendChild(container);
 }
@@ -293,7 +308,7 @@ function renderGame(){
           for(let d=1; d<=3; d++) diceRow.appendChild(el('button',{disabled:d>maxDice, class:uiState.attackDice===d?'active':'', onclick:()=>{uiState.attackDice=d; render();}}, String(d)));
           actionCard.appendChild(el('label',{},'Кубиков атаки'));
           actionCard.appendChild(diceRow);
-          actionCard.appendChild(el('button',{class:'btn',style:'width:100%;margin-top:6px;',onclick:doAttack}, `Атаковать [${uiState.selectedTo.toUpperCase()}]`));
+          actionCard.appendChild(el('button',{class:'btn',style:'width:100%;margin-top:6px;',onclick:doAttack}, `Атаковать: ${tName(uiState.selectedTo)}`));
         }
         actionCard.appendChild(el('button',{class:'btn ghost',style:'width:100%;margin-top:10px;',onclick:goToFortify},'Перейти к переброске войск'));
       } else if(state.turnPhase==='fortify'){
@@ -364,23 +379,25 @@ function buildBoard(boardWrap, state){
   }, {passive:false});
 
   const myTurn = isMyTurn(state);
-  const paths = svg.querySelectorAll('path[id]');
-  const labelsToPlace = [];
-  paths.forEach(path=>{
-    const tid = path.id.toLowerCase();
-    const t = state.territories[tid];
+  const shapes = svg.querySelectorAll('path[id], g[id]');
+  const territoryAnchor = {}; // tid -> { bbox, area }
+  const c2t = window.__COUNTRY_TO_TERRITORY || {};
+  shapes.forEach(shape=>{
+    const countryCode = shape.id.toLowerCase();
+    const tid = c2t[countryCode] || null;
+    const t = tid ? state.territories[tid] : null;
     if(!t){
-      path.setAttribute('fill', '#2a2d20');
-      path.setAttribute('stroke', '#12140f');
-      path.setAttribute('stroke-width','0.5');
-      path.style.pointerEvents = 'none';
+      shape.setAttribute('fill', '#2a2d20');
+      shape.setAttribute('stroke', '#12140f');
+      shape.setAttribute('stroke-width','0.5');
+      shape.style.pointerEvents = 'none';
       return;
     }
     const owner = playerById(state, t.owner);
-    path.setAttribute('fill', owner ? owner.color : '#555');
-    path.setAttribute('stroke', '#12140f');
-    path.setAttribute('stroke-width','0.6');
-    path.style.cursor='pointer';
+    shape.setAttribute('fill', owner ? owner.color : '#555');
+    shape.setAttribute('stroke', '#12140f');
+    shape.setAttribute('stroke-width','0.6');
+    shape.style.cursor='pointer';
 
     let selectable=false;
     if(myTurn){
@@ -399,33 +416,33 @@ function buildBoard(boardWrap, state){
         else if(uiState.selectedFrom!==null && (tid===uiState.selectedFrom || (t.owner===uiState.myId && (window.__ADJ_HINT && window.__ADJ_HINT[uiState.selectedFrom] || []).includes(tid)))) selectable=true;
       }
     }
-    if(tid===uiState.selectedFrom){ path.setAttribute('stroke','#fff'); path.setAttribute('stroke-width','1.6'); }
-    if(tid===uiState.selectedTo){ path.setAttribute('stroke','#c9a15a'); path.setAttribute('stroke-width','1.6'); }
-    path.addEventListener('click', ()=>onTerritoryClick(tid));
+    if(tid===uiState.selectedFrom){ shape.setAttribute('stroke','#fff'); shape.setAttribute('stroke-width','1.6'); }
+    if(tid===uiState.selectedTo){ shape.setAttribute('stroke','#c9a15a'); shape.setAttribute('stroke-width','1.6'); }
+    shape.addEventListener('click', ()=>onTerritoryClick(tid));
     if(selectable){
-      path.addEventListener('mouseenter', ()=>{ path.style.filter='brightness(1.3)'; });
-      path.addEventListener('mouseleave', ()=>{ path.style.filter=''; });
+      shape.addEventListener('mouseenter', ()=>{ shape.style.filter='brightness(1.3)'; });
+      shape.addEventListener('mouseleave', ()=>{ shape.style.filter=''; });
     }
-    labelsToPlace.push([path, t]);
+    // track the largest member shape per territory to anchor its army-count label
+    try{
+      const bb = shape.getBBox();
+      const area = bb.width*bb.height;
+      if(!territoryAnchor[tid] || area>territoryAnchor[tid].area) territoryAnchor[tid] = {bbox:bb, area};
+    }catch(e){}
   });
 
-  // place army-count labels using each path's bounding box (in the SVG's own
-  // layout space, which stays consistent regardless of the pan/zoom transform
-  // applied to .board-inner — using screen coordinates here would drift once
-  // zoomed or panned, since a transformed ancestor becomes the positioning
-  // context for its absolutely-positioned children)
   requestAnimationFrame(()=>{
     const vb = svg.viewBox.baseVal;
     const scaleX = svg.clientWidth / vb.width;
     const scaleY = svg.clientHeight / vb.height;
-    labelsToPlace.forEach(([path, t])=>{
-      try{
-        const bbox = path.getBBox();
-        const cx = (bbox.x + bbox.width/2 - vb.x) * scaleX;
-        const cy = (bbox.y + bbox.height/2 - vb.y) * scaleY;
-        const label = el('div',{class:'territory-label', style:`left:${cx}px;top:${cy}px;`}, String(t.armies));
-        inner.appendChild(label);
-      }catch(e){}
+    Object.entries(territoryAnchor).forEach(([tid, info])=>{
+      const t = state.territories[tid];
+      if(!t) return;
+      const bbox = info.bbox;
+      const cx = (bbox.x + bbox.width/2 - vb.x) * scaleX;
+      const cy = (bbox.y + bbox.height/2 - vb.y) * scaleY;
+      const label = el('div',{class:'territory-label', style:`left:${cx}px;top:${cy}px;`}, String(t.armies));
+      inner.appendChild(label);
     });
   });
 }

@@ -30,7 +30,8 @@ let WORLD_READY = false;
 let TERRITORY_IDS = [];          // e.g. ['northern-america','western-europe', ...]
 let TERRITORY_CONTINENT = {};    // tid -> continent key
 let TERRITORY_DISPLAY_NAME = {}; // tid -> human-readable name (Russian)
-let COUNTRY_TO_TERRITORY = {};   // cca2 -> tid (used to color the underlying country shapes)
+let COUNTRY_TO_TERRITORY = {};   // cca2 -> tid
+let NUMERIC_TO_TERRITORY = {};   // ISO 3166-1 numeric code (as Number) -> tid — matches world-atlas topojson feature ids
 let ADJ = {};                    // tid -> [tid, ...]
 let CONTINENTS = {};             // key -> { name, bonus, tiles: [tid,...] }
 
@@ -81,7 +82,12 @@ async function loadWorldData() {
   const included = data.filter(c => c.cca2 && c.subregion && SUBREGION_INFO[c.subregion]);
 
   COUNTRY_TO_TERRITORY = {};
-  included.forEach(c => { COUNTRY_TO_TERRITORY[c.cca2.toLowerCase()] = slugify(c.subregion); });
+  NUMERIC_TO_TERRITORY = {};
+  included.forEach(c => {
+    const tid = slugify(c.subregion);
+    COUNTRY_TO_TERRITORY[c.cca2.toLowerCase()] = tid;
+    if (c.ccn3) NUMERIC_TO_TERRITORY[Number(c.ccn3)] = tid;
+  });
 
   TERRITORY_IDS = [...new Set(Object.values(COUNTRY_TO_TERRITORY))];
   TERRITORY_CONTINENT = {};
@@ -116,7 +122,7 @@ async function loadWorldData() {
 
   WORLD_READY = true;
   console.log(`World data loaded: ${TERRITORY_IDS.length} territories (grouped by subregion) across ${Object.keys(CONTINENTS).length} continents.`);
-  io.emit('world-info', { adj: ADJ, countryToTerritory: COUNTRY_TO_TERRITORY, names: TERRITORY_DISPLAY_NAME });
+  io.emit('world-info', { adj: ADJ, numericToTerritory: NUMERIC_TO_TERRITORY, names: TERRITORY_DISPLAY_NAME });
 }
 loadWorldData().catch(err => console.error('Failed to load world data:', err));
 
@@ -294,7 +300,7 @@ function botEndTurn(roomCode, botId) {
 // ---------- SOCKET HANDLERS ----------
 io.on('connection', (socket) => {
   let myPlayerId = null;
-  if (WORLD_READY) socket.emit('world-info', { adj: ADJ, countryToTerritory: COUNTRY_TO_TERRITORY, names: TERRITORY_DISPLAY_NAME });
+  if (WORLD_READY) socket.emit('world-info', { adj: ADJ, numericToTerritory: NUMERIC_TO_TERRITORY, names: TERRITORY_DISPLAY_NAME });
 
   socket.on('create-room', ({ name, color, playerId }) => {
     const roomCode = code();
@@ -303,7 +309,7 @@ io.on('connection', (socket) => {
       roomCode, phase: 'lobby',
       players: [{ id: playerId, name, color, host: true }],
       turnOrder: [], currentTurnIndex: 0, turnPhase: null,
-      reinforcements: 0, fortifyUsed: false,
+      reinforcements: 0, fortifyUsed: false, pendingCapture: null,
       territories: {}, log: [`${name} создал(а) комнату.`]
     };
     rooms[roomCode] = state;
@@ -405,7 +411,7 @@ io.on('connection', (socket) => {
 
   socket.on('attack', ({ roomCode, from, to, diceCount }) => {
     const state = rooms[roomCode];
-    if (!state || !isTurn(state, myPlayerId) || state.turnPhase !== 'attack') return;
+    if (!state || !isTurn(state, myPlayerId) || state.turnPhase !== 'attack' || state.pendingCapture) return;
     const fromT = state.territories[from], toT = state.territories[to];
     if (!fromT || !toT || fromT.owner !== myPlayerId || toT.owner === myPlayerId) return;
     if (!ADJ[from] || !ADJ[from].includes(to)) return;
@@ -424,19 +430,38 @@ io.on('connection', (socket) => {
     let text = `⚔ ${attackerName} атакует из [${tName(from)}] на [${tName(to)}]. 🎲 ${atkRolls.join(',')} vs 🎲 ${defRolls.join(',')} → атакующий -${atkLoss}, защитник -${defLoss}.`;
     if (toT.armies <= 0) {
       toT.owner = myPlayerId;
-      toT.armies = dCount;
+      toT.armies = dCount; // minimum required transfer (Risk rule: at least the dice used)
       fromT.armies -= dCount;
       if (fromT.armies < 1) fromT.armies = 1;
       text += ` 🏳 Территория [${tName(to)}] захвачена у ${defenderName}!`;
+      const maxExtra = Math.max(0, fromT.armies - 1); // can move more, but must leave ≥1 behind
+      if (maxExtra > 0) state.pendingCapture = { from, to, maxExtra };
     }
     addLog(state, text);
     checkEliminationsAndWin(state);
     broadcast(roomCode);
   });
 
+  socket.on('confirm-capture', ({ roomCode, amount }) => {
+    const state = rooms[roomCode];
+    if (!state || !isTurn(state, myPlayerId) || !state.pendingCapture) return;
+    const { from, to, maxExtra } = state.pendingCapture;
+    const amt = Math.max(0, Math.min(Number(amount) || 0, maxExtra));
+    const fromT = state.territories[from], toT = state.territories[to];
+    if (fromT && toT) {
+      fromT.armies -= amt;
+      toT.armies += amt;
+      addLog(state, amt > 0
+        ? `➕ ${playerById(state, myPlayerId).name} перебрасывает ещё ${amt} армий в [${tName(to)}].`
+        : `${playerById(state, myPlayerId).name} оставляет гарнизон [${tName(from)}] без изменений.`);
+    }
+    state.pendingCapture = null;
+    broadcast(roomCode);
+  });
+
   socket.on('go-to-fortify', ({ roomCode }) => {
     const state = rooms[roomCode];
-    if (!state || !isTurn(state, myPlayerId) || state.turnPhase !== 'attack') return;
+    if (!state || !isTurn(state, myPlayerId) || state.turnPhase !== 'attack' || state.pendingCapture) return;
     state.turnPhase = 'fortify';
     addLog(state, `${playerById(state, myPlayerId).name} переходит к переброске войск.`);
     broadcast(roomCode);
@@ -459,7 +484,7 @@ io.on('connection', (socket) => {
 
   socket.on('end-turn', ({ roomCode }) => {
     const state = rooms[roomCode];
-    if (!state || !isTurn(state, myPlayerId)) return;
+    if (!state || !isTurn(state, myPlayerId) || state.pendingCapture) return;
     state.currentTurnIndex = (state.currentTurnIndex + 1) % state.turnOrder.length;
     state.turnPhase = 'reinforce';
     state.fortifyUsed = false;
